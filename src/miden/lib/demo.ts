@@ -4,7 +4,8 @@ import {
   NoteType,
   ConsumableNoteRecord,
   AccountId,
-} from "@demox-labs/miden-sdk";
+  AuthScheme,
+} from "@miden-sdk/miden-sdk";
 
 export async function demo() {
   // Initialize client to connect with the Miden Testnet.
@@ -17,7 +18,7 @@ export async function demo() {
   await client.syncState();
 
   // Creating Alice's account
-  const alice = await client.newWallet(AccountStorageMode.public(), true, 0);
+  const alice = await client.newWallet(AccountStorageMode.public(), true, AuthScheme.AuthRpoFalcon512);
   console.log("Alice's account ID:", alice.id().toString());
 
   // Creating a faucet account
@@ -30,7 +31,7 @@ export async function demo() {
     symbol, // Symbol of the token
     decimals, // Number of decimals
     initialSupply, // Initial supply of tokens
-    0
+    AuthScheme.AuthRpoFalcon512 // Authentication scheme
   );
   console.log("Faucet account ID:", faucet.id().toString());
 
@@ -62,13 +63,13 @@ export async function demo() {
     await new Promise((resolve) => setTimeout(resolve, 3000));
   }
 
-  const noteIds = consumableNotes.map((note) =>
-    note.inputNoteRecord().id().toString()
+  const notes = consumableNotes.map((note) =>
+    note.inputNoteRecord().toNote()
   );
 
   // Create transaction request to consume notes
   // NOTE: This transaction will consume the notes and add the fungible asset to Alice's vault
-  const consumeTxRequest = client.newConsumeTransactionRequest(noteIds);
+  const consumeTxRequest = client.newConsumeTransactionRequest(notes);
   const consumeTxId = await client.submitNewTransaction(
     alice.id(),
     consumeTxRequest

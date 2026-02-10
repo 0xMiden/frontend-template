@@ -14,7 +14,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ["@demox-labs/miden-sdk"],
+    exclude: ["@miden-sdk/miden-sdk"],
     include: ["dexie"],
   },
   server: {
