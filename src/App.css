@@ -40,6 +40,36 @@
   padding: 2em;
 }
 
+.wallet-section {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.counter-button {
+  font-size: 1.2em;
+  padding: 0.8em 1.6em;
+}
+
+.account-id {
+  font-size: 0.8em;
+  color: #888;
+  font-family: monospace;
+  margin-top: 0.5rem;
+}
+
+.error {
+  color: #ff4444;
+  font-size: 0.9em;
+  margin-top: 0.5rem;
+  word-break: break-word;
+}
+
+.loading {
+  padding: 2rem;
+  color: #888;
+}
+
 .read-the-docs {
   color: #888;
 }
