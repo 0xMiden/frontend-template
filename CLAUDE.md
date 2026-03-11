@@ -8,18 +8,24 @@ React 19 + TypeScript + Vite frontend for the Miden blockchain.
 - `src/components/` — UI components (Counter, AppContent)
 - `src/hooks/` — Custom hooks (useIncrementCounter)
 - `src/lib/` — Shared utilities
+- `src/__tests__/` — Test infrastructure (mocks, fixtures, patterns)
+- `src/components/__tests__/` — Component tests
 - `vite.config.ts` — Vite config with midenVitePlugin() from @miden-sdk/vite-plugin
-- `package.json` — Dependencies: @miden-sdk/react, @miden-sdk/miden-sdk, @demox-labs/miden-wallet-adapter
+- `vitest.config.ts` — Vitest test runner config
+- `package.json` — Dependencies: @miden-sdk/react, @miden-sdk/miden-sdk
 
-## Build & Dev
+## Build, Dev & Test
 
 ```
-npm run dev          # Start dev server (Vite)
-npm run build        # Type check + production build (tsc -b && vite build)
-npm run lint         # ESLint
+yarn dev             # Start dev server (Vite)
+yarn build           # Type check + production build (tsc -b && vite build)
+yarn lint            # ESLint
+yarn test            # Run all tests once (vitest --run)
+yarn test:watch      # Run tests in watch mode (vitest)
+yarn test:coverage   # Run tests with coverage report
 ```
 
-Type checking alone (verification command):
+Type checking alone:
 ```
 npx tsc -b --noEmit
 ```
@@ -33,29 +39,31 @@ Only use WebClient directly via `useMidenClient()` for operations not covered by
 ```tsx
 import { MidenProvider } from "@miden-sdk/react";
 
-<MidenProvider config={{ rpcUrl: "devnet", prover: "devnet" }}>
+<MidenProvider config={{ rpcUrl: "testnet", prover: "testnet" }}>
   <App />
 </MidenProvider>
 ```
 
-### Query Hooks (return { data, isLoading, error, refetch })
+### Query Hooks
+Each returns its own result shape plus `isLoading`, `error`, `refetch`:
 ```tsx
-const { data: accounts } = useAccounts();       // .wallets, .faucets, .all
-const { data: account } = useAccount(accountId); // .balance(faucetId)
-const { data: notes } = useNotes();              // .input, .consumable
+const { wallets, faucets } = useAccounts();
+const { account, assets, getBalance } = useAccount(accountId);
+const { notes, consumableNotes } = useNotes();
 const { syncHeight, sync } = useSyncState();
-const { data: metadata } = useAssetMetadata(faucetId); // .symbol, .decimals
+const { assetMetadata } = useAssetMetadata(faucetId);
 ```
 
-### Mutation Hooks (return { mutate, isLoading, stage, error, reset })
+### Mutation Hooks
+Each returns its own action function plus `isLoading`, `stage`, `error`, `reset`.
 Transaction stages: `idle → executing → proving → submitting → complete`
 ```tsx
-const { mutate: createWallet } = useCreateWallet();
-const { mutate: send, stage } = useSend();
-const { mutate: consume } = useConsume();
-const { mutate: mint } = useMint();
-const { mutate: swap } = useSwap();
-const { mutate: execute } = useTransaction();  // arbitrary tx requests
+const { createWallet } = useCreateWallet();
+const { send, stage } = useSend();
+const { consume } = useConsume();
+const { mint } = useMint();
+const { swap } = useSwap();
+const { execute } = useTransaction();  // arbitrary tx requests
 ```
 
 ### Token Amounts Are BigInt
@@ -64,6 +72,81 @@ import { formatAssetAmount, parseAssetAmount } from "@miden-sdk/react";
 const display = formatAssetAmount(balance, 8);  // bigint → string
 const amount = parseAssetAmount("1.5", 8);       // string → bigint
 ```
+
+## TDD Workflow
+
+When building features, follow this test-driven cycle:
+
+1. **Write a failing test** for the feature/component
+2. **Run tests** — confirm the test fails (red)
+3. **Implement** the minimum code to make the test pass
+4. **Run tests** — confirm all tests pass (green)
+5. **Refactor** if needed, re-run tests
+6. Type checking runs automatically after each edit (PostToolUse hook)
+7. Affected tests run automatically after each edit (PostToolUse hook)
+
+### Test file conventions
+- Component tests: `src/components/__tests__/ComponentName.test.tsx`
+- Hook tests: `src/hooks/__tests__/hookName.test.ts`
+- Pattern references: `src/__tests__/patterns/` — copy and adapt these
+
+### Writing tests for Miden components
+```tsx
+// 1. Mock the SDK at module level (always required)
+vi.mock("@miden-sdk/react", () => import("@/__tests__/mocks/miden-sdk-react"));
+
+// 2. Import hooks to override per-test
+import { useAccounts } from "@miden-sdk/react";
+
+// 3. Override in individual tests
+vi.mocked(useAccounts).mockReturnValue({ wallets: [], ... });
+```
+
+See `testing-patterns` skill for full mock factory reference and fixture data.
+
+## Verification Sequence
+
+Automated verification runs in layers (each catches different failure classes):
+
+1. **TypeScript type check** (auto, per-edit) — catches type errors immediately
+2. **Affected tests** (auto, per-edit) — catches logic regressions from changes
+3. **Full test suite + type check + build** (auto, on task completion via Stop hook) — catches integration issues
+4. **Browser verification** (manual/MCP) — catches "compiles but doesn't work" failures
+
+### Browser verification (when needed)
+After completing a feature, verify in the browser:
+1. Start dev server: `yarn dev`
+2. Navigate to `http://localhost:5173`
+3. Check for render errors and console messages
+4. If wallet-dependent features: ask the PM to verify with the MidenFi wallet extension
+
+## Contract Artifact Handoff
+
+Frontend loads pre-compiled `.masp` packages from `public/packages/` at runtime.
+
+### Artifact location
+```
+public/packages/
+├── counter_account.masp    # Counter account component
+└── increment_note.masp     # Increment note script
+```
+
+### Building artifacts
+In the contract project (e.g., `project-template/`):
+```bash
+cargo miden build --release
+# Copy .masp files from contracts/*/target/miden/release/ to public/packages/
+```
+
+### Validate artifacts
+```bash
+.claude/hooks/check-artifacts.sh
+```
+
+### Failure recovery
+- **Missing artifacts**: Build contracts with `cargo miden build` or ask the PM to supply the `.masp` files
+- **Stale artifacts**: Rebuild and re-copy after contract changes
+- **Deserialization failure at runtime**: Version mismatch — rebuild contracts with the SDK version matching `@miden-sdk/miden-sdk` in `package.json`
 
 ## Critical Pitfalls
 
@@ -74,6 +157,34 @@ const amount = parseAssetAmount("1.5", 8);       // string → bigint
 **COOP/COEP headers required**: WASM SharedArrayBuffer needs `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` in vite.config.ts AND production server.
 
 **Token amounts are bigint, not number**: `send({ amount: 1000 })` will fail. Use `amount: 1000n` or `parseAssetAmount("10", 8)`.
+
+## PM Workflow
+
+For non-developer users building with this template:
+
+1. Clone the repository and run `yarn install`
+2. Start Claude Code in the project directory
+3. Describe the app you want to build in natural language
+4. Claude will implement features using TDD — tests are written first, then code
+5. Automated hooks verify correctness at every step
+6. When Claude says "done", the Stop hook runs full tests + build automatically
+7. Review the app in the browser: `yarn dev` → open `http://localhost:5173`
+8. If using wallet features, install the MidenFi browser extension to test
+
+### Known limitations
+- **Visual correctness**: Automated tests verify structure and behavior, not visual appearance. Review the app in the browser for styling issues.
+- **Wallet extension**: Real wallet interactions require the MidenFi browser extension. Tests mock the wallet adapter.
+- **Network-dependent features**: Some features (syncing, transaction submission) require testnet connectivity.
+
+## Miden Skills
+
+For Miden-specific guidance, Claude will auto-load these skills when relevant:
+- `react-sdk-patterns` — Complete React SDK hook API reference
+- `testing-patterns` — Test mock factory, fixtures, and TDD conventions
+- `frontend-pitfalls` — All frontend/WASM/browser pitfalls with safe/unsafe examples
+- `miden-concepts` — Miden architecture from a developer perspective
+- `vite-wasm-setup` — Vite + WASM configuration, deployment headers, troubleshooting
+- `signer-integration` — External signer setup (Para, Turnkey, MidenFi)
 
 ## General Frontend Skills (Recommended)
 
@@ -88,16 +199,6 @@ git clone https://github.com/vercel-labs/agent-skills.git
 # See: https://github.com/anthropics/claude-code/tree/main/plugins/frontend-design
 ```
 
-These provide the general frontend layer. The Miden-specific skills below layer on top.
-
-## Miden Skills
-
-For Miden-specific guidance, Claude will auto-load these skills when relevant:
-- `react-sdk-patterns` — Complete React SDK hook API reference
-- `frontend-pitfalls` — All frontend/WASM/browser pitfalls with safe/unsafe examples
-- `miden-concepts` — Miden architecture from a developer perspective
-- `vite-wasm-setup` — Vite + WASM configuration, deployment headers, troubleshooting
-
 ## Advanced Development
 
 For complex applications beyond basic hook usage (custom signers, raw WebClient, advanced note flows):
@@ -105,12 +206,5 @@ For complex applications beyond basic hook usage (custom signers, raw WebClient,
 1. Clone `miden-client` repo alongside this project (see `frontend-source-guide` skill)
 2. Use Plan Mode first — Claude explores React SDK source + examples before coding
 3. Claude uses sub-agents to explore repos efficiently without filling main context
-4. The type check hook provides verification — check types, fix errors, recheck
 
 The basic skills cover ~80% of patterns. Source repos provide the remaining 20% for advanced builders.
-
-## Verification Workflow
-
-After modifying TypeScript/React code, always:
-1. Type check: `npx tsc -b --noEmit`
-2. Build test: `npm run build`

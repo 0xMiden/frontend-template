@@ -7,7 +7,7 @@ import {
 import {
   useWallet,
   Transaction,
-} from "@demox-labs/miden-wallet-adapter";
+} from "@miden-sdk/miden-wallet-adapter";
 import {
   TransactionRequestBuilder,
   Package,

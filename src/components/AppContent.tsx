@@ -1,5 +1,5 @@
 import { useMiden, useSyncState } from "@miden-sdk/react";
-import { WalletMultiButton } from "@demox-labs/miden-wallet-adapter";
+import { WalletMultiButton } from "@miden-sdk/miden-wallet-adapter";
 import reactLogo from "@/assets/react.svg";
 import midenLogo from "@/assets/miden.svg";
 import viteLogo from "/vite.svg";
