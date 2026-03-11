@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Generated template directory (populated by scripts/sync-template.sh before publish)
+create-miden-app/template/
