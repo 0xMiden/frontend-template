@@ -20,8 +20,9 @@ export default defineConfig({
 `midenVitePlugin()` accepts an options object:
 
 ```typescript
-midenVitePlugin({ crossOriginIsolation: true })
-// Enables COOP/COEP headers in dev server. Defaults to false to avoid breaking OAuth popups.
+midenVitePlugin({ crossOriginIsolation: false })
+// COOP/COEP headers on dev server. Default: true.
+// Set to false if your app uses OAuth popups or third-party iframes.
 ```
 
 ## What midenVitePlugin() Handles
@@ -31,7 +32,7 @@ midenVitePlugin({ crossOriginIsolation: true })
 - **WASM loading** — Configures Vite to correctly import `.wasm` modules
 - **Top-level await** — Enables top-level `await` required by the WASM SDK initialization
 - **optimizeDeps** — Excludes `@miden-sdk/miden-sdk` from pre-bundling (pre-bundling corrupts the WASM binary)
-- **COOP/COEP headers** — Optionally adds `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` headers via `crossOriginIsolation` option
+- **COOP/COEP headers** — Adds `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` headers by default (disable with `crossOriginIsolation: false`)
 
 You do not need to install or configure `vite-plugin-wasm`, `vite-plugin-top-level-await`, or dexie aliases manually.
 
@@ -119,10 +120,10 @@ Standard Vite-compatible tsconfig settings work with Miden. The only actual cons
 
 | Issue | Cause | Fix |
 |-------|-------|-----|
-| "SharedArrayBuffer is not defined" | Missing COOP/COEP headers | Use `midenVitePlugin({ crossOriginIsolation: true })` in dev; set headers on production server |
+| "SharedArrayBuffer is not defined" | COOP/COEP headers not reaching the browser | Verify `midenVitePlugin()` is in plugins (headers are on by default); check production server headers separately |
 | WASM module not found | SDK not configured correctly | Ensure `midenVitePlugin()` is in plugins array |
 | "Top-level await not supported" | Missing plugin setup | Ensure `midenVitePlugin()` is in plugins array |
-| WASM init hangs | COEP blocking WASM fetch | Check network tab for blocked requests; enable `crossOriginIsolation` |
+| WASM init hangs | COEP blocking WASM fetch | Check network tab for blocked requests; verify COOP/COEP headers are present |
 | Build succeeds but WASM fails at runtime | Wrong MIME type | Serve .wasm as application/wasm |
 | "recursive use of an object" | Concurrent WASM access | Use runExclusive() from useMiden() |
 | Double initialization in dev | React StrictMode | Use MidenProvider (handles this internally) |
