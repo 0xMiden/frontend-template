@@ -5,9 +5,11 @@ React 19 + TypeScript + Vite frontend for the Miden blockchain.
 ## Project Structure
 
 - `src/` — React application source
-- `src/miden/` — Miden integration code (client setup, transaction helpers)
-- `vite.config.ts` — Vite config with WASM plugins, COOP/COEP headers, dexie alias
-- `package.json` — Dependencies: @miden-sdk/react, @miden-sdk/miden-sdk, dexie
+- `src/components/` — UI components (Counter, AppContent)
+- `src/hooks/` — Custom hooks (useIncrementCounter)
+- `src/lib/` — Shared utilities
+- `vite.config.ts` — Vite config with midenVitePlugin() from @miden-sdk/vite-plugin
+- `package.json` — Dependencies: @miden-sdk/react, @miden-sdk/miden-sdk, @demox-labs/miden-wallet-adapter
 
 ## Build & Dev
 
