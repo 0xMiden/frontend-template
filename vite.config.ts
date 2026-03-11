@@ -9,9 +9,6 @@ export default defineConfig({
     dedupe: ["react", "react-dom", "react/jsx-runtime"],
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      // The wallet adapter was published under @demox-labs but imports
-      // @demox-labs/miden-sdk internally. Redirect to the current package.
-      "@demox-labs/miden-sdk": "@miden-sdk/miden-sdk",
     },
   },
 });

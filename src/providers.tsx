@@ -4,8 +4,8 @@ import {
   MidenWalletAdapter,
   WalletProvider,
   WalletModalProvider,
-} from "@demox-labs/miden-wallet-adapter";
-import "@demox-labs/miden-wallet-adapter/styles.css";
+} from "@miden-sdk/miden-wallet-adapter";
+import "@miden-sdk/miden-wallet-adapter/styles.css";
 import { APP_NAME, MIDEN_RPC_URL, MIDEN_PROVER } from "@/config";
 
 export function AppProviders({ children }: { children: ReactNode }) {
