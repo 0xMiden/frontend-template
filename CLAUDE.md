@@ -140,14 +140,27 @@ Automated verification runs in layers (each catches different failure classes):
 1. **TypeScript type check** (auto, per-edit) — catches type errors immediately
 2. **Affected tests** (auto, per-edit) — catches logic regressions from changes
 3. **Full test suite + type check + build** (auto, on task completion via Stop hook) — catches integration issues
-4. **Browser verification** (manual/MCP) — catches "compiles but doesn't work" failures
+4. **Browser verification** (Playwright MCP / Claude in Chrome) — catches "compiles but doesn't work" failures
 
 ### Browser verification (when needed)
-After completing a feature, verify in the browser:
+
+Two tools are available for browser verification. Use whichever is appropriate:
+
+#### Playwright MCP (visual verification, no wallet)
+Configured in `.mcp.json`. Use for checking that the UI renders correctly, no console errors, layout looks right. Cannot interact with the MidenFi wallet extension.
+
 1. Start dev server: `yarn dev`
-2. Navigate to `http://localhost:5173`
-3. Check for render errors and console messages
-4. If wallet-dependent features: ask the PM to verify with the MidenFi wallet extension
+2. Use Playwright MCP tools to navigate to `http://localhost:5173`
+3. Take a screenshot, check for render errors
+4. Check the browser console for errors
+
+#### Claude in Chrome (full verification, with wallet)
+Use for wallet-dependent features. Connects to the user's real browser where MidenFi is installed.
+
+1. Start Claude Code with `claude --chrome` (or run `/chrome` in session)
+2. Start dev server: `yarn dev`
+3. Navigate to `http://localhost:5173`
+4. Interact with wallet connect, transaction flows, etc.
 
 ## Contract Artifact Handoff
 
