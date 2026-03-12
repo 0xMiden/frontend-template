@@ -76,7 +76,7 @@ const display = formatAssetAmount(balance, 8);  // bigint → string
 const amount = parseAssetAmount("1.5", 8);       // string → bigint
 ```
 
-For exhaustive hook API reference, see `node_modules/@miden-sdk/react/CLAUDE.md`.
+For exhaustive hook API reference, read `node_modules/@miden-sdk/react/CLAUDE.md` and `node_modules/@miden-sdk/react/README.md`.
 
 ## TDD Workflow
 
