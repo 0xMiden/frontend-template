@@ -182,29 +182,6 @@ await sendMany({
 });
 ```
 
-### useInternalTransfer()
-```tsx
-const { transfer, transferChain, result, isLoading, stage, error, reset } = useInternalTransfer();
-
-// Single transfer between own accounts (creates P2ID note and immediately consumes it):
-await transfer({
-  from: myAccountId,
-  to: myOtherAccountId,
-  assetId: faucetId,
-  amount: 50n,
-  noteType: "private",      // Default: "private"
-});
-
-// Multi-hop chain across multiple accounts:
-await transferChain({
-  from: startAccountId,
-  recipients: [account2, account3, account4],  // ordered list
-  assetId: faucetId,
-  amount: 50n,
-});
-// Returns InternalTransferResult[] — one per hop
-```
-
 ### useMint()
 ```tsx
 const { mint, result, isLoading, stage, error, reset } = useMint();

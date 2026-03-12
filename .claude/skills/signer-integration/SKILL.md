@@ -72,7 +72,7 @@ import { MidenFiSignerProvider } from "@miden-sdk/miden-wallet-adapter";
 
 <MidenFiSignerProvider
   appName="My App"                              // passed to MidenWalletAdapter
-  network="Testnet"                             // "Testnet" | "Devnet" | "Localhost"
+  network="testnet"                             // "testnet" | "devnet" | "localhost"
   autoConnect                                   // reconnect on mount. Default: false
   accountType="RegularAccountImmutableCode"     // Default: "RegularAccountImmutableCode"
   storageMode="public"                          // "private" | "public" | "network". Default: "public"
@@ -86,14 +86,7 @@ import { MidenFiSignerProvider } from "@miden-sdk/miden-wallet-adapter";
 </MidenFiSignerProvider>
 ```
 
-Wallet-adapter-specific hook for direct access to wallet state:
-```tsx
-import { useMidenFiWallet } from "@miden-sdk/miden-wallet-adapter";
-
-const { wallet, connected, publicKey, sendTransaction, signTransaction } = useMidenFiWallet();
-```
-
-For most use cases, prefer the generic `useSigner()` interface below.
+With `MidenFiSignerProvider` in place, use `useSigner()` from the React SDK to manage connection state. The regular React SDK hooks (`useSend`, `useConsume`, etc.) automatically sign via the connected wallet — no additional wiring needed.
 
 ## Unified Signer Interface
 
