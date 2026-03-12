@@ -38,10 +38,13 @@ Only use WebClient directly via `useMidenClient()` for operations not covered by
 ### Setup (main.tsx or App.tsx)
 ```tsx
 import { MidenProvider } from "@miden-sdk/react";
+import { MidenFiSignerProvider } from "@miden-sdk/miden-wallet-adapter";
 
-<MidenProvider config={{ rpcUrl: "testnet", prover: "testnet" }}>
-  <App />
-</MidenProvider>
+<MidenFiSignerProvider appName="My App" autoConnect>
+  <MidenProvider config={{ rpcUrl: "testnet", prover: "testnet" }}>
+    <App />
+  </MidenProvider>
+</MidenFiSignerProvider>
 ```
 
 ### Query Hooks
@@ -72,6 +75,8 @@ import { formatAssetAmount, parseAssetAmount } from "@miden-sdk/react";
 const display = formatAssetAmount(balance, 8);  // bigint → string
 const amount = parseAssetAmount("1.5", 8);       // string → bigint
 ```
+
+For exhaustive hook API reference, see `node_modules/@miden-sdk/react/CLAUDE.md`.
 
 ## TDD Workflow
 
