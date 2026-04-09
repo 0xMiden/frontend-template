@@ -115,7 +115,7 @@ Automated verification runs in layers (each catches different failure classes):
 
 1. **TypeScript type check** (auto, per-edit) — catches type errors immediately
 2. **Affected tests** (auto, per-edit) — catches logic regressions from changes
-3. **Full test suite + type check + build** (auto, on task completion via Stop hook) — catches integration issues
+3. **Full test suite + type check + build** (auto, on each edit via PostToolUse) — catches integration issues
 4. **Browser verification** (Playwright MCP / Claude in Chrome) — catches "compiles but doesn't work" failures
 
 ### Browser verification (when needed)
@@ -185,7 +185,7 @@ For non-developer users building with this template:
 3. Describe the app you want to build in natural language
 4. Claude will implement features using TDD — tests are written first, then code
 5. Automated hooks verify correctness at every step
-6. When Claude says "done", the Stop hook runs full tests + build automatically
+6. Automated hooks run full tests + build after each code edit
 7. Review the app in the browser: `yarn dev` → open `http://localhost:5173`
 8. If using wallet features, install the MidenFi browser extension to test
 

@@ -144,7 +144,7 @@ Hooks in `.claude/settings.json` enforce quality automatically:
 
 1. **PostToolUse: typecheck** — `npx tsc -b --noEmit` on every `.ts`/`.tsx` edit in `src/`
 2. **PostToolUse: affected tests** — `npx vitest --changed --run` on every `.ts`/`.tsx` edit in `src/`
-3. **Stop hook** — Full `vitest --run && tsc -b --noEmit && vite build` before task completion
+3. **PostToolUse: full suite** — Full `vitest --run && tsc -b --noEmit && vite build` after each edit
 
 If any hook fails (exit code 2), the agent is blocked from proceeding until the issue is fixed.
 
@@ -163,7 +163,7 @@ If any hook fails (exit code 2), the agent is blocked from proceeding until the 
    ↓
 6. Refactor if needed
    ↓
-7. Task complete       → Stop hook: full suite + build
+7. Task complete       → full suite already ran after last edit
 ```
 
 ## Common Mistakes
