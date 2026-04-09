@@ -68,14 +68,25 @@ const { client, account, setAccount } = useTurnkeySigner();
 
 ### MidenFi Wallet Adapter (Browser Extension)
 ```tsx
-import { MidenFiSignerProvider } from "@miden-sdk/wallet-adapter-react";
+import { MidenFiSignerProvider } from "@miden-sdk/miden-wallet-adapter";
 
-<MidenFiSignerProvider network="Testnet">
+<MidenFiSignerProvider
+  appName="My App"                              // passed to MidenWalletAdapter
+  network="testnet"                             // "testnet" | "devnet" | "localhost"
+  autoConnect                                   // reconnect on mount. Default: false
+  accountType="RegularAccountImmutableCode"     // Default: "RegularAccountImmutableCode"
+  storageMode="public"                          // "private" | "public" | "network". Default: "public"
+  customComponents={[myComponent]}              // optional: custom AccountComponents
+  privateDataPermission={permission}            // optional: private data access level
+  allowedPrivateData={allowedData}              // optional: allowed private data types
+>
   <MidenProvider config={{ rpcUrl: "testnet" }}>
     <App />
   </MidenProvider>
 </MidenFiSignerProvider>
 ```
+
+With `MidenFiSignerProvider` in place, use `useSigner()` from the React SDK to manage connection state. The regular React SDK hooks (`useSend`, `useConsume`, etc.) automatically sign via the connected wallet — no additional wiring needed.
 
 ## Unified Signer Interface
 

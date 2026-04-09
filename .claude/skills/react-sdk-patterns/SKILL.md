@@ -66,6 +66,26 @@ const { notes, consumableNotes, noteSummaries, consumableNoteSummaries, isLoadin
 const { notes } = useNotes({ accountId: "0x..." });
 // Filter by status:
 const { notes } = useNotes({ status: "committed" });
+// Filter by sender:
+const { notes } = useNotes({ sender: "0x..." });
+// Exclude specific notes:
+const { notes } = useNotes({ excludeIds: ["0xnote1", "0xnote2"] });
+```
+
+### useNoteStream(options?)
+```tsx
+const { notes, latest, markHandled, markAllHandled, snapshot, isLoading, error } = useNoteStream();
+// notes — StreamedNote[] (matching filter criteria)
+// latest — most recent StreamedNote (convenience)
+// markHandled(noteId) — exclude a note from future renders
+// markAllHandled() — exclude all current notes
+// snapshot() — capture { ids, timestamp } for cross-phase filtering
+
+// Options:
+const { notes } = useNoteStream({ status: "committed", sender: "0x..." });
+const { notes } = useNoteStream({ since: Date.now() - 60000 }); // last 60s
+const { notes } = useNoteStream({ excludeIds: new Set(["0xnote1"]) });
+const { notes } = useNoteStream({ amountFilter: (amount) => amount > 100n });
 ```
 
 ### useSyncState()
@@ -117,6 +137,20 @@ const account = await createFaucet({
 });
 ```
 
+### useImportAccount()
+```tsx
+const { importAccount, account, isImporting, error, reset } = useImportAccount();
+
+// Import by account ID (network lookup):
+const account = await importAccount({ type: "id", accountId: "0x..." });
+
+// Import from file:
+const account = await importAccount({ type: "file", file: accountFileOrBytes });
+
+// Import from seed:
+const account = await importAccount({ type: "seed", seed: seedBytes, mutable: true });
+```
+
 ### useSend()
 ```tsx
 const { send, result, isLoading, stage, error, reset } = useSend();
@@ -128,6 +162,8 @@ await send({
   noteType: "private",     // "private" | "public". Default: "private"
   recallHeight: 100,       // optional: sender can reclaim after this block
   timelockHeight: 50,      // optional: recipient can consume after this block
+  sendAll: true,           // optional: send entire balance (ignores amount)
+  attachment: [1n, 2n],    // optional: arbitrary data attached to the note
 });
 ```
 
@@ -139,9 +175,10 @@ await sendMany({
   assetId: faucetId,
   recipients: [
     { to: recipient1, amount: 500n },
-    { to: recipient2, amount: 300n },
+    { to: recipient2, amount: 300n, noteType: "public" },          // per-recipient override
+    { to: recipient3, amount: 200n, attachment: [1n, 2n, 3n] },    // per-recipient attachment
   ],
-  noteType: "private",
+  noteType: "private",     // default for all recipients
 });
 ```
 
@@ -210,6 +247,25 @@ await waitForConsumableNotes({
   minCount: 1,         // Default: 1
   timeoutMs: 10000,
 });
+```
+
+### useSessionAccount(options)
+```tsx
+const { initialize, sessionAccountId, isReady, step, error, reset } = useSessionAccount({
+  fund: async (sessionId) => {
+    // Called after session wallet is created — fund it here
+    await send({ from: mainWallet, to: sessionId, assetId: faucetId, amount: 100n });
+  },
+  assetId: faucetId,              // optional: for note filtering
+  walletOptions: {                // optional: session wallet creation options
+    storageMode: "private",
+    mutable: true,
+    authScheme: 0,
+  },
+  pollIntervalMs: 3000,           // optional: funding detection interval. Default: 3000
+});
+// Steps: "idle" → "creating" → "funding" → "consuming" → "ready"
+// Call initialize() to start the flow. isReady becomes true when fully funded.
 ```
 
 ## Transaction Progress UI
