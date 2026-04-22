@@ -1,114 +1,43 @@
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
-vi.mock("@/hooks/useIncrementCounter", () => ({
-  useIncrementCounter: vi.fn(),
+vi.mock("@/components/ConfiguredCounter", () => ({
+  ConfiguredCounter: ({ counterAddress }: { counterAddress: string }) => (
+    <div data-testid="configured-counter">{counterAddress}</div>
+  ),
 }));
 
-import { useIncrementCounter } from "@/hooks/useIncrementCounter";
+vi.mock("@/config", async () => {
+  const actual = await vi.importActual<typeof import("@/config")>("@/config");
+  return { ...actual };
+});
+
 import { Counter } from "../Counter";
+import * as config from "@/config";
 
-const defaultHookReturn = {
-  increment: vi.fn(),
-  count: 42,
-  isSubmitting: false,
-  isWaiting: false,
-  error: null,
-  walletConnected: true,
-  explorerUrl: "https://testnet.midenscan.com/account/mtst1test",
-};
-
-describe("Counter", () => {
+describe("Counter gate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(useIncrementCounter).mockReturnValue(defaultHookReturn);
   });
 
-  it("displays the current count on the button", () => {
+  it("renders ConfiguredCounter when COUNTER_ADDRESS is set", () => {
     render(<Counter />);
-    expect(
-      screen.getByRole("button", { name: "count is 42" }),
-    ).toBeInTheDocument();
+    const configured = screen.getByTestId("configured-counter");
+    expect(configured).toBeInTheDocument();
+    expect(configured).toHaveTextContent(config.COUNTER_ADDRESS!);
   });
 
-  it("calls increment on button click", async () => {
-    const mockIncrement = vi.fn();
-    vi.mocked(useIncrementCounter).mockReturnValue({
-      ...defaultHookReturn,
-      increment: mockIncrement,
-    });
-
-    render(<Counter />);
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "count is 42" }));
-    expect(mockIncrement).toHaveBeenCalledOnce();
-  });
-
-  it("shows submitting state", () => {
-    vi.mocked(useIncrementCounter).mockReturnValue({
-      ...defaultHookReturn,
-      isSubmitting: true,
-    });
-
-    render(<Counter />);
-    const button = screen.getByRole("button", { name: "Submitting..." });
-    expect(button).toBeDisabled();
-  });
-
-  it("shows waiting for network state", () => {
-    vi.mocked(useIncrementCounter).mockReturnValue({
-      ...defaultHookReturn,
-      isWaiting: true,
-    });
-
-    render(<Counter />);
-    const button = screen.getByRole("button", {
-      name: "Waiting for network...",
-    });
-    expect(button).toBeDisabled();
-  });
-
-  it("disables button when wallet not connected", () => {
-    vi.mocked(useIncrementCounter).mockReturnValue({
-      ...defaultHookReturn,
-      walletConnected: false,
-    });
-
-    render(<Counter />);
-    expect(screen.getByRole("button")).toBeDisabled();
-  });
-
-  it("disables button when count is loading (null)", () => {
-    vi.mocked(useIncrementCounter).mockReturnValue({
-      ...defaultHookReturn,
-      count: null,
-    });
-
-    render(<Counter />);
-    const button = screen.getByRole("button", { name: "count is ..." });
-    expect(button).toBeDisabled();
-  });
-
-  it("displays error message", () => {
-    vi.mocked(useIncrementCounter).mockReturnValue({
-      ...defaultHookReturn,
-      error: "Transaction failed: insufficient funds",
-    });
-
-    render(<Counter />);
-    expect(
-      screen.getByText("Transaction failed: insufficient funds"),
-    ).toBeInTheDocument();
-  });
-
-  it("links to explorer with counter address", () => {
-    render(<Counter />);
-    const link = screen.getByRole("link");
-    expect(link).toHaveAttribute(
-      "href",
-      "https://testnet.midenscan.com/account/mtst1test",
+  it("shows not-configured message when COUNTER_ADDRESS is null", () => {
+    vi.spyOn(config, "COUNTER_ADDRESS", "get").mockReturnValue(
+      null as unknown as string,
     );
-    expect(link).toHaveAttribute("target", "_blank");
+
+    render(<Counter />);
+    expect(
+      screen.getByText(/counter address not configured/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("configured-counter"),
+    ).not.toBeInTheDocument();
   });
 });

@@ -50,6 +50,7 @@ describe("Provider Setup Pattern", () => {
       runExclusive: vi.fn(),
       prover: null,
       signerAccountId: null,
+      signerConnected: null,
     });
 
     render(<StatusIndicator />);
@@ -67,6 +68,7 @@ describe("Provider Setup Pattern", () => {
       runExclusive: vi.fn(),
       prover: null,
       signerAccountId: null,
+      signerConnected: null,
     });
 
     render(<StatusIndicator />);

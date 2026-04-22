@@ -51,9 +51,9 @@ it("shows empty state", () => {
 - `useMiden()` — isReady: true
 
 **Mutation hooks** return idle state by default:
-- `useSend()` — `{ send: vi.fn(), stage: "idle", isLoading: false }`
-- `useMint()`, `useConsume()`, `useSwap()`, `useTransaction()` — similar pattern
-- `useCreateWallet()` — `{ createWallet: vi.fn(), isCreating: false }`
+- `useSend()` — `{ send: vi.fn(), stage: "idle", isLoading: false }`. Its `result` type is `SendResult { txId, note }` — distinct from `TransactionResult { transactionId }` used by `useMint`/`useConsume`/`useSwap`/`useMultiSend`/`useTransaction`.
+- `useMint()`, `useConsume()`, `useSwap()`, `useTransaction()`, `useMultiSend()` — idle shape with `result: TransactionResult | null`.
+- `useCreateWallet()` — `{ createWallet: vi.fn(), isCreating: false }`.
 
 ### Simulating transaction stages
 
@@ -68,10 +68,20 @@ vi.mocked(useSend).mockReturnValue({
   reset: vi.fn(),
 });
 
-// Show completed transaction
+// Show completed transaction — useSend returns SendResult { txId, note }
 vi.mocked(useSend).mockReturnValue({
   send: vi.fn(),
-  result: { transactionId: "0xabc123" },
+  result: { txId: "0xabc123", note: null },
+  isLoading: false,
+  stage: "complete",
+  error: null,
+  reset: vi.fn(),
+});
+
+// Other mutation hooks return TransactionResult { transactionId }
+vi.mocked(useMint).mockReturnValue({
+  mint: vi.fn(),
+  result: { transactionId: "0xdef456" },
   isLoading: false,
   stage: "complete",
   error: null,
@@ -85,21 +95,22 @@ Realistic test data in `src/__tests__/fixtures/`:
 
 ```tsx
 import {
-  WALLET_ID_1,           // "mtst1qy35qfqdvpjx2e5zf9hkp4vr"
-  WALLET_ID_2,           // "mtst1qa7k9qjf8dp4x2e5zf9hkp5vr"
-  FAUCET_ID,             // "mtst1qx9y8zjf2dp4x2e5zf9hkp3vr"
-  COUNTER_ID,            // "mtst1aru8adnrqspgcsr3drk2n990lyc070ll"
+  WALLET_ID_1,           // "0x0a00000000000001"
+  WALLET_ID_2,           // "0x0a00000000000002"
+  FAUCET_ID,             // "0x0a00000000000003"
+  COUNTER_ID,            // "0x0a00000000000004"
   MOCK_WALLET_HEADER,    // { id, nonce, storageCommitment }
   MOCK_FAUCET_HEADER,    // { id, nonce, storageCommitment }
   MOCK_ASSET_BALANCE,    // { assetId, amount: 1000000000n, symbol: "TEST", decimals: 8 }
   MOCK_ACCOUNT,          // { id, nonce, bech32id() }
-  MOCK_TRANSACTION_RESULT, // { transactionId: "0x..." }
-  MOCK_NOTE_SUMMARY,    // { id, assets, sender }
+  MOCK_TRANSACTION_RESULT, // { transactionId: "0x..." } — useMint / useConsume / useSwap / useMultiSend / useTransaction
+  MOCK_SEND_RESULT,        // { txId: "0x...", note: null }  — useSend
+  MOCK_NOTE_SUMMARY,       // { id, assets, sender }
 } from "@/__tests__/fixtures";
 ```
 
 Key characteristics:
-- Account IDs use bech32 format (`mtst1...`)
+- Account IDs use hex format (`0x...`) — network-agnostic test fixtures
 - Amounts are `bigint` (e.g., `1000000000n` = 10.0 with 8 decimals)
 - Asset metadata uses TEST token with 8 decimals
 
@@ -121,22 +132,29 @@ Every component test should cover:
 3. **Error state** — shows error message, recovery action
 4. **User interactions** — buttons, forms trigger correct handler calls
 
-## Mocking the wallet adapter
+## Wallet connection state in tests
 
-The app uses `@miden-sdk/miden-wallet-adapter`. Mock it at the module level:
+The template's wallet button (`src/components/AppContent.tsx`) drives off **`useSigner()`** from `@miden-sdk/react`, not `useMiden()`. When testing wallet-connect UI, override `useSigner`:
 
 ```tsx
-vi.mock("@miden-sdk/miden-wallet-adapter", () => ({
-  WalletMultiButton: () => <button>Connect Wallet</button>,
-  useWallet: vi.fn(() => ({
-    address: "mtst1...",
-    connected: true,
-    requestTransaction: vi.fn(),
-  })),
-}));
+import { useSigner } from "@miden-sdk/react";
+
+// disconnected — shows "Connect Wallet"
+vi.mocked(useSigner).mockReturnValue(null);
+
+// connected — shows "Disconnect Wallet"
+vi.mocked(useSigner).mockReturnValue({
+  name: "MidenFi",
+  isConnected: true,
+  connect: vi.fn(),
+  disconnect: vi.fn(),
+  // ...other SignerContextValue fields the component under test actually reads
+});
 ```
 
-Vitest config externalizes `@miden-sdk/miden-wallet-adapter*` sub-packages to prevent broken transitive resolution from the reactui sub-package.
+`useMiden()` also exposes `signerAccountId` / `signerConnected` as lower-level provider state — useful when you need to drive client-side flows that depend on which account the signer has selected (e.g. transaction-building hooks). For UI tests of the connect/disconnect button path, prefer `useSigner()`.
+
+Vitest config externalizes `@miden-sdk/miden-wallet-adapter-react` to prevent broken transitive resolution.
 
 ## Automated Verification Pipeline
 

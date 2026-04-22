@@ -1,45 +1,16 @@
-import { useIncrementCounter } from "@/hooks/useIncrementCounter";
 import { COUNTER_ADDRESS } from "@/config";
-import "./Counter.css";
+import { ConfiguredCounter } from "./ConfiguredCounter";
 
 export function Counter() {
-  const {
-    increment,
-    count,
-    isSubmitting,
-    isWaiting,
-    error,
-    walletConnected,
-    explorerUrl,
-  } = useIncrementCounter(COUNTER_ADDRESS);
-
-  const busy = isSubmitting || isWaiting;
-  const buttonLabel = isSubmitting
-    ? "Submitting..."
-    : isWaiting
-      ? "Waiting for network..."
-      : `count is ${count ?? "..."}`;
-
-  return (
-    <div className="card">
-      <button
-        className="counter-button"
-        onClick={increment}
-        disabled={busy || count === null || !walletConnected}
-      >
-        {buttonLabel}
-      </button>
-      <p>
-        <a
-          href={explorerUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="account-id"
-        >
-          Counter: {COUNTER_ADDRESS}
-        </a>
-      </p>
-      {error && <p className="error">{error}</p>}
-    </div>
-  );
+  if (!COUNTER_ADDRESS) {
+    return (
+      <div className="card">
+        <p>
+          Counter address not configured — see README for deployment
+          instructions.
+        </p>
+      </div>
+    );
+  }
+  return <ConfiguredCounter counterAddress={COUNTER_ADDRESS} />;
 }

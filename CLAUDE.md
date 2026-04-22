@@ -30,21 +30,24 @@ Type checking alone:
 npx tsc -b --noEmit
 ```
 
-## SDK Choice: React SDK over Raw WebClient
+## SDK Choice: React SDK Hooks First
 
-ALWAYS prefer `@miden-sdk/react` hooks over raw `@miden-sdk/miden-sdk` WebClient methods.
-Only use WebClient directly via `useMidenClient()` for operations not covered by hooks.
+ALWAYS prefer `@miden-sdk/react` hooks over low-level `WasmWebClient` methods.
+Only use the WASM client directly via `useMidenClient()` for operations not covered by hooks.
 
-### Setup (main.tsx or App.tsx)
+### Setup — this template's actual providers (`src/providers.tsx`)
 ```tsx
 import { MidenProvider } from "@miden-sdk/react";
-import { MidenFiSignerProvider } from "@miden-sdk/miden-wallet-adapter";
+import { MidenFiSignerProvider } from "@miden-sdk/miden-wallet-adapter-react";
 
-<MidenFiSignerProvider appName="My App" autoConnect>
-  <MidenProvider config={{ rpcUrl: "testnet", prover: "testnet" }}>
+<MidenProvider
+  config={{ rpcUrl: MIDEN_RPC_URL, prover: MIDEN_PROVER }}
+  loadingComponent={<div className="loading">Loading Miden WASM...</div>}
+>
+  <MidenFiSignerProvider appName={APP_NAME} network={WalletAdapterNetwork.Testnet} autoConnect>
     <App />
-  </MidenProvider>
-</MidenFiSignerProvider>
+  </MidenFiSignerProvider>
+</MidenProvider>
 ```
 
 ### Query Hooks
@@ -166,6 +169,12 @@ cargo miden build --release
 - **Stale artifacts**: Rebuild and re-copy after contract changes
 - **Deserialization failure at runtime**: Version mismatch — rebuild contracts with the SDK version matching `@miden-sdk/miden-sdk` in `package.json`
 
+## Known Temporary Workarounds
+
+One remaining upstream feature gap. The README has full rationale + removal steps; summary below.
+
+**Fixed-interval network poll** ([0xMiden/miden-client#467](https://github.com/0xMiden/miden-client/issues/467)): `useIncrementCounter.ts::increment` polls the counter's storage map every `NETWORK_POLL_INTERVAL_MS` (2.5 s) until the value changes or `NETWORK_POLL_TIMEOUT_MS` (30 s) elapses. `useWaitForCommit` doesn't apply because the increment is wallet-submitted and consumed externally by the network operator — the local client never sees the tx. #467 tracks adding a subscription primitive.
+
 ## Critical Pitfalls
 
 **WASM init must complete first**: Always use MidenProvider's `loadingComponent` or check `useMiden().isReady`. Components rendering before WASM init will crash.
@@ -219,7 +228,7 @@ git clone https://github.com/vercel-labs/agent-skills.git
 
 ## Advanced Development
 
-For complex applications beyond basic hook usage (custom signers, raw WebClient, advanced note flows):
+For complex applications beyond basic hook usage (custom signers, direct WasmWebClient access, advanced note flows):
 
 1. Clone `miden-client` repo alongside this project (see `frontend-source-guide` skill)
 2. Use Plan Mode first — Claude explores React SDK source + examples before coding

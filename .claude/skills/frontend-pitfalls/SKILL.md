@@ -18,7 +18,7 @@ function App() {
 
 // CORRECT — use loadingComponent or check isReady
 <MidenProvider
-  config={{ rpcUrl: "devnet" }}
+  config={{ rpcUrl: "testnet" }}
   loadingComponent={<p>Loading WASM...</p>}
 >
   <App />
@@ -44,8 +44,9 @@ const handleClick = async () => {
 };
 
 // CORRECT — use runExclusive for sequential execution
+const client = useMidenClient();
 const { runExclusive } = useMiden();
-await runExclusive(async (client) => {
+await runExclusive(async () => {
   await client.syncState();
   // now safe to do next operation
 });
@@ -117,7 +118,7 @@ Default `autoSyncInterval` is 15000ms (15 seconds). Each sync triggers re-render
 
 ```tsx
 // PROBLEM — form resets every 15 seconds because parent re-renders
-<MidenProvider config={{ rpcUrl: "devnet" }}>
+<MidenProvider config={{ rpcUrl: "testnet" }}>
   <SendForm />  {/* re-renders on every sync */}
 </MidenProvider>
 
@@ -125,7 +126,7 @@ Default `autoSyncInterval` is 15000ms (15 seconds). Each sync triggers re-render
 const MemoizedForm = React.memo(SendForm);
 
 // SOLUTION 2 — disable auto-sync for manual control
-<MidenProvider config={{ rpcUrl: "devnet", autoSyncInterval: 0 }}>
+<MidenProvider config={{ rpcUrl: "testnet", autoSyncInterval: 0 }}>
 ```
 
 ## FP7: IndexedDB State Loss (MEDIUM)
@@ -162,16 +163,16 @@ For production COOP/COEP, set headers at the server level (see vite-wasm-setup s
 
 ## FP9: React StrictMode Double-Init (LOW)
 
-React 19 StrictMode double-invokes effects in development. MidenProvider handles this via `isInitializedRef`, but direct `WebClient.createClient()` calls will initialize twice.
+React 19 StrictMode double-invokes effects in development. MidenProvider handles this via `isInitializedRef`, but direct `WasmWebClient.createClient()` calls will initialize twice. (The SDK exports `WasmWebClient` as `WebClient` for convenience.)
 
 ```tsx
 // WRONG — manual client creation in useEffect
 useEffect(() => {
-  const client = await WebClient.createClient(url); // called twice in dev
+  const client = await WasmWebClient.createClient(url); // called twice in dev
 }, []);
 
 // CORRECT — always use MidenProvider
-<MidenProvider config={{ rpcUrl: "devnet" }}>
+<MidenProvider config={{ rpcUrl: "testnet" }}>
 ```
 
 ## Quick Reference

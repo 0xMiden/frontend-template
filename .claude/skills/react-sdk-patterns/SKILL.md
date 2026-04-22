@@ -7,7 +7,7 @@ description: Complete guide to building Miden frontends with @miden-sdk/react ho
 
 ## SDK Choice
 
-ALWAYS use `@miden-sdk/react` hooks. Only fall back to raw `@miden-sdk/miden-sdk` WebClient via `useMidenClient()` for operations not covered by hooks. The React SDK handles WASM safety (runExclusive), state management (Zustand), auto-sync, and transaction stage tracking automatically.
+ALWAYS use `@miden-sdk/react` hooks. Only fall back to the raw `WasmWebClient` (exported as `WebClient`) via `useMidenClient()` for operations not covered by hooks. The React SDK handles WASM safety (runExclusive), state management (Zustand), auto-sync, and transaction stage tracking automatically.
 
 ## MidenProvider Configuration
 
@@ -16,8 +16,8 @@ import { MidenProvider } from "@miden-sdk/react";
 
 <MidenProvider
   config={{
-    rpcUrl: "devnet",           // "devnet" | "testnet" | "localhost" | custom URL
-    prover: "devnet",           // "local" | "devnet" | "testnet" | custom URL
+    rpcUrl: "testnet",          // "devnet" | "testnet" | "localhost" | custom URL
+    prover: "testnet",          // "local" | "devnet" | "testnet" | custom URL
     autoSyncInterval: 15000,    // ms, set to 0 to disable. Default: 15000
     noteTransportUrl: "...",    // optional: for private note delivery
   }}
@@ -30,8 +30,8 @@ import { MidenProvider } from "@miden-sdk/react";
 
 | Network | rpcUrl | Use When |
 |---------|--------|----------|
-| Devnet | `"devnet"` | Development, testing with fake tokens |
-| Testnet | `"testnet"` | Pre-production testing |
+| Testnet | `"testnet"` | Recommended for new projects — primary development network |
+| Devnet | `"devnet"` | Early-access testing (may lag feature parity with testnet) |
 | Localhost | `"localhost"` | Local node at `http://localhost:57291` |
 
 ## Query Hooks
@@ -233,7 +233,7 @@ await execute({
 ### useWaitForCommit()
 ```tsx
 const { waitForCommit } = useWaitForCommit();
-await waitForCommit(result.transactionId, {
+await waitForCommit(result.txId, {  // useSend returns { txId, note }; other hooks use { transactionId }
   timeoutMs: 10000,   // Default: 10000
   intervalMs: 1000,    // Default: 1000
 });
@@ -294,7 +294,7 @@ No signer provider needed. Keys are managed in the browser via IndexedDB.
 Wrap MidenProvider with a signer provider. Three pre-built options:
 - `ParaSignerProvider` from `@miden-sdk/para` — EVM wallets
 - `TurnkeySignerProvider` from `@miden-sdk/miden-turnkey-react` — passkey auth
-- `MidenFiSignerProvider` from `@miden-sdk/wallet-adapter-react` — MidenFi wallet
+- `MidenFiSignerProvider` from `@miden-sdk/miden-wallet-adapter-react` — MidenFi wallet
 
 ```tsx
 // Example: Para signer wrapping MidenProvider
@@ -331,7 +331,7 @@ const client = useMidenClient(); // throws if not ready
 const { runExclusive } = useMiden();
 
 // For operations not covered by hooks:
-await runExclusive(async (client) => {
+await runExclusive(async () => {
   const header = await client.getBlockHeaderByNumber(100);
 });
 ```

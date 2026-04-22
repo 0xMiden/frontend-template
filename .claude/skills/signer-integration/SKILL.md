@@ -68,17 +68,18 @@ const { client, account, setAccount } = useTurnkeySigner();
 
 ### MidenFi Wallet Adapter (Browser Extension)
 ```tsx
-import { MidenFiSignerProvider } from "@miden-sdk/miden-wallet-adapter";
+import { MidenFiSignerProvider } from "@miden-sdk/miden-wallet-adapter-react";
+import { WalletAdapterNetwork } from "@miden-sdk/miden-wallet-adapter-base";
 
 <MidenFiSignerProvider
-  appName="My App"                              // passed to MidenWalletAdapter
-  network="testnet"                             // "testnet" | "devnet" | "localhost"
-  autoConnect                                   // reconnect on mount. Default: false
-  accountType="RegularAccountImmutableCode"     // Default: "RegularAccountImmutableCode"
-  storageMode="public"                          // "private" | "public" | "network". Default: "public"
-  customComponents={[myComponent]}              // optional: custom AccountComponents
-  privateDataPermission={permission}            // optional: private data access level
-  allowedPrivateData={allowedData}              // optional: allowed private data types
+  appName="My App"                                        // optional: passed to MidenWalletAdapter
+  network={WalletAdapterNetwork.Testnet}                  // WalletAdapterNetwork enum: Devnet | Testnet | Localnet
+  autoConnect                                             // reconnect on mount. Default: false
+  accountType="RegularAccountImmutableCode"               // Default: "RegularAccountImmutableCode"
+  storageMode="public"                                    // "private" | "public" | "network". Default: "public"
+  customComponents={[myComponent]}                        // optional: custom AccountComponents
+  privateDataPermission={permission}                      // optional: private data access level
+  allowedPrivateData={allowedData}                        // optional: allowed private data types
 >
   <MidenProvider config={{ rpcUrl: "testnet" }}>
     <App />

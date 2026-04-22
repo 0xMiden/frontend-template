@@ -40,7 +40,7 @@ Accounts are composed from **components** — reusable Rust modules annotated wi
 ### Notes
 Notes are **UTXO-like messages** for asynchronous inter-account communication. A note contains:
 - **Script** — Logic that executes when the note is consumed
-- **Inputs** — Data passed to the script (Vec<Felt>)
+- **Storage** — Data accessible to the script during execution (`NoteStorage`, Vec<Felt>)
 - **Assets** — Fungible/non-fungible tokens attached to the note
 - **Metadata** — Sender, tag, note type (public/private)
 
