@@ -134,25 +134,67 @@ Every component test should cover:
 
 ## Wallet connection state in tests
 
-The template's wallet button (`src/components/AppContent.tsx`) drives off **`useSigner()`** from `@miden-sdk/react`, not `useMiden()`. When testing wallet-connect UI, override `useSigner`:
+This template's wallet button (`src/components/AppContent.tsx`) drives off **`useMidenFiWallet()`** from `@miden-sdk/miden-wallet-adapter-react`, not the generic `useSigner()`. The button gates on `wallet.readyState` (from `@miden-sdk/miden-wallet-adapter-base`) so the UI can render an "Install MidenFi Wallet" state before the extension is detected, rather than falling through to the adapter's Chrome-Web-Store fallback. When testing wallet-connect UI, mock both modules and override per test.
+
+Setup at the top of the test file:
 
 ```tsx
-import { useSigner } from "@miden-sdk/react";
+vi.mock("@miden-sdk/react", () => import("@/__tests__/mocks/miden-sdk-react"));
+vi.mock("@miden-sdk/miden-wallet-adapter-react", () => ({
+  useMidenFiWallet: vi.fn(() => ({
+    wallet: null,
+    connected: false,
+    connecting: false,
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+  })),
+}));
+vi.mock("@miden-sdk/miden-wallet-adapter-base", () => ({
+  WalletReadyState: {
+    Installed: "Installed",
+    NotDetected: "NotDetected",
+    Loadable: "Loadable",
+    Unsupported: "Unsupported",
+  },
+}));
 
-// disconnected — shows "Connect Wallet"
-vi.mocked(useSigner).mockReturnValue(null);
-
-// connected — shows "Disconnect Wallet"
-vi.mocked(useSigner).mockReturnValue({
-  name: "MidenFi",
-  isConnected: true,
-  connect: vi.fn(),
-  disconnect: vi.fn(),
-  // ...other SignerContextValue fields the component under test actually reads
-});
+import { useMidenFiWallet } from "@miden-sdk/miden-wallet-adapter-react";
 ```
 
-`useMiden()` also exposes `signerAccountId` / `signerConnected` as lower-level provider state — useful when you need to drive client-side flows that depend on which account the signer has selected (e.g. transaction-building hooks). For UI tests of the connect/disconnect button path, prefer `useSigner()`.
+Per-test overrides match the states the template renders:
+
+```tsx
+// extension not detected — shows disabled "Install MidenFi Wallet"
+vi.mocked(useMidenFiWallet).mockReturnValue({
+  wallet: { adapter: {} as never, readyState: "NotDetected" } as never,
+  connected: false,
+  connecting: false,
+  connect: vi.fn(),
+  disconnect: vi.fn(),
+} as never);
+
+// installed + disconnected — shows "Connect Wallet"
+vi.mocked(useMidenFiWallet).mockReturnValue({
+  wallet: { adapter: {} as never, readyState: "Installed" } as never,
+  connected: false,
+  connecting: false,
+  connect: vi.fn(),
+  disconnect: vi.fn(),
+} as never);
+
+// connected — shows "Disconnect Wallet"
+vi.mocked(useMidenFiWallet).mockReturnValue({
+  wallet: { adapter: {} as never, readyState: "Installed" } as never,
+  connected: true,
+  connecting: false,
+  connect: vi.fn(),
+  disconnect: vi.fn(),
+} as never);
+```
+
+See `src/components/__tests__/AppContent.test.tsx` for the full pattern (including a `walletState()` helper that cuts per-test boilerplate).
+
+For app code that needs the selected signer account for client-side flows (transaction-building hooks, etc.), `useMiden()` exposes `signerAccountId` / `signerConnected` as lower-level provider state — mock those via the `@miden-sdk/react` mock factory.
 
 Vitest config externalizes `@miden-sdk/miden-wallet-adapter-react` to prevent broken transitive resolution.
 

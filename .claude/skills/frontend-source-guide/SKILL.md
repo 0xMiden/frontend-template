@@ -155,7 +155,7 @@ const mintAndConsume = async () => {
   const { transactionId } = await mint({ targetAccountId, faucetId, amount });
   await waitForCommit(transactionId);
   await waitForConsumableNotes({ accountId: targetAccountId });
-  await consume({ accountId: targetAccountId, noteIds: [...] });
+  await consume({ accountId: targetAccountId, notes: [...] });
 };
 ```
 

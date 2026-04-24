@@ -198,7 +198,7 @@ await mint({
 const { consume, result, isLoading, stage, error, reset } = useConsume();
 await consume({
   accountId: myAccountId,
-  noteIds: [noteId1, noteId2],
+  notes: [noteId1, noteId2],   // accepts: hex string IDs, NoteId, InputNoteRecord, or Note
 });
 ```
 

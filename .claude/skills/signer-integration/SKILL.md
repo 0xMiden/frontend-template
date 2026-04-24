@@ -89,6 +89,13 @@ import { WalletAdapterNetwork } from "@miden-sdk/miden-wallet-adapter-base";
 
 With `MidenFiSignerProvider` in place, use `useSigner()` from the React SDK to manage connection state. The regular React SDK hooks (`useSend`, `useConsume`, etc.) automatically sign via the connected wallet — no additional wiring needed.
 
+### This template's MidenFi-specific pattern
+
+This template deviates from the generic `useSigner()` approach in two places — worth knowing because it's a pattern you'll likely want when the wallet extension is the primary signer:
+
+- **Wallet button uses `useMidenFiWallet()` + `WalletReadyState`** (`src/components/AppContent.tsx`). The button gates on `wallet.readyState` so it can render a disabled "Install MidenFi Wallet" state before the extension is detected. `useSigner().connect()` would silently fall through to the adapter's `window.open(adapter.url, ...)` install fallback (Chrome Web Store → Play Store redirect on some platforms); gating on `readyState` avoids that path entirely.
+- **Custom transaction flow calls `wallet.requestTransaction(...)` directly** (`src/hooks/useIncrementCounter.ts`). The counter increment builds a bespoke `TransactionRequest` (via `TransactionRequestBuilder`, a custom `Note` with `NoteAttachment.newNetworkAccountTarget`, etc.) and hands it to the wallet for signing + submission. The React SDK mutation hooks (`useSend`, `useConsume`, ...) don't cover this kind of custom note construction, and the tx is submitted by the wallet rather than the local client — so `useWaitForCommit` doesn't apply either.
+
 ## Unified Signer Interface
 
 Works with any signer provider above:
