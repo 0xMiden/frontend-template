@@ -134,11 +134,11 @@ export function useIncrementCounter(counterAddress: string) {
       const previousCount = count;
 
       setIsWaiting(true);
-      // TODO(0xMiden/miden-client#467): The React SDK exposes no hook to
+      // TODO(0xMiden/miden-client#2111): The React SDK exposes no hook to
       // subscribe to account-state changes driven by the network operator
       // (our counter is Network storage mode). `useWaitForCommit` only
       // watches locally-submitted transactions, and this increment was
-      // submitted by the wallet. Until #467 lands a subscription primitive,
+      // submitted by the wallet. Until #2111 lands a subscription primitive,
       // we poll the counter's storage map with a bounded timeout.
       const deadline = Date.now() + NETWORK_POLL_TIMEOUT_MS;
       let changed = false;

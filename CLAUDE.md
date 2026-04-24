@@ -173,7 +173,7 @@ cargo miden build --release
 
 One remaining upstream feature gap. The README has full rationale + removal steps; summary below.
 
-**Fixed-interval network poll** ([0xMiden/miden-client#467](https://github.com/0xMiden/miden-client/issues/467)): `useIncrementCounter.ts::increment` polls the counter's storage map every `NETWORK_POLL_INTERVAL_MS` (2.5 s) until the value changes or `NETWORK_POLL_TIMEOUT_MS` (30 s) elapses. `useWaitForCommit` doesn't apply because the increment is wallet-submitted and consumed externally by the network operator — the local client never sees the tx. #467 tracks adding a subscription primitive.
+**Fixed-interval network poll** ([0xMiden/miden-client#2111](https://github.com/0xMiden/miden-client/issues/2111)): `useIncrementCounter.ts::increment` polls the counter's storage map every `NETWORK_POLL_INTERVAL_MS` (2.5 s) until the value changes or `NETWORK_POLL_TIMEOUT_MS` (30 s) elapses. `useWaitForCommit` doesn't apply because the increment is wallet-submitted and consumed externally by the network operator — the local client never sees the tx. #2111 tracks a React-SDK subscription primitive for this case (narrowed from the broader event-system discussion in #467).
 
 ## Critical Pitfalls
 

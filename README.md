@@ -112,14 +112,14 @@ Browser-level verification (render correctness, no console errors, wallet popup,
 
 One active workaround remains after the 0.14.4 upgrade, covering an upstream feature gap. The inline comment in `src/hooks/useIncrementCounter.ts` describes the removal steps.
 
-### Fixed-interval network poll — waiting for Network-mode account updates ([miden-client#467](https://github.com/0xMiden/miden-client/issues/467))
+### Fixed-interval network poll — waiting for Network-mode account updates ([miden-client#2111](https://github.com/0xMiden/miden-client/issues/2111))
 
-After `wallet.requestTransaction` returns, `src/hooks/useIncrementCounter.ts` bounded-polls the counter's storage map until the value changes or a 30 s timeout elapses. The React SDK's `useWaitForCommit` only watches *locally-submitted* transactions — our increment is wallet-submitted and consumed externally by the network operator, so it never reaches the local client's transaction log. `#467` tracks a first-class account-update / nullifier subscription API.
+After `wallet.requestTransaction` returns, `src/hooks/useIncrementCounter.ts` bounded-polls the counter's storage map until the value changes or a 30 s timeout elapses. The React SDK's `useWaitForCommit` only watches *locally-submitted* transactions — our increment is wallet-submitted and consumed externally by the network operator, so it never reaches the local client's transaction log. [`#2111`](https://github.com/0xMiden/miden-client/issues/2111) tracks a React-SDK subscription primitive for account-state updates driven by external consumers (scoped narrowly from the broader event-system discussion in [`#467`](https://github.com/0xMiden/miden-client/issues/467)).
 
-**After #467 lands a subscription primitive:**
+**After #2111 lands a subscription primitive:**
 1. Replace the `while` poll loop in `useIncrementCounter.ts::increment` with the new subscription / waitFor API.
 2. Remove `NETWORK_POLL_INTERVAL_MS` + `NETWORK_POLL_TIMEOUT_MS` from `src/config.ts` if no other consumer depends on them.
-3. Remove the `#467` TODO block.
+3. Remove the `#2111` TODO block.
 
 ## AI Developer Experience
 
