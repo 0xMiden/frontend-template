@@ -40,15 +40,21 @@ Only use the WASM client directly via `useMidenClient()` for operations not cove
 import { MidenProvider } from "@miden-sdk/react";
 import { MidenFiSignerProvider } from "@miden-sdk/miden-wallet-adapter-react";
 
-<MidenProvider
-  config={{ rpcUrl: MIDEN_RPC_URL, prover: MIDEN_PROVER }}
-  loadingComponent={<div className="loading">Loading Miden WASM...</div>}
+<MidenFiSignerProvider
+  appName={APP_NAME}
+  network={WalletAdapterNetwork.Testnet}
+  autoConnect
 >
-  <MidenFiSignerProvider appName={APP_NAME} network={WalletAdapterNetwork.Testnet} autoConnect>
+  <MidenProvider
+    config={{ rpcUrl: MIDEN_RPC_URL, prover: MIDEN_PROVER }}
+    loadingComponent={<div className="loading">Loading Miden WASM...</div>}
+  >
     <App />
-  </MidenFiSignerProvider>
-</MidenProvider>
+  </MidenProvider>
+</MidenFiSignerProvider>
 ```
+
+> `MidenFiSignerProvider` must wrap `MidenProvider`. `MidenProvider` reads from `SignerContext` during initialization (to wire its external-keystore client), so the signer context has to exist before `MidenProvider` mounts.
 
 ### Query Hooks
 Each returns its own result shape plus `isLoading`, `error`, `refetch`:

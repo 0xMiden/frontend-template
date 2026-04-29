@@ -49,38 +49,30 @@ vi.mock("@miden-sdk/miden-wallet-adapter-react", () => ({
   useMidenFiWallet: vi.fn(() => defaultWallet),
 }));
 
-// `useIncrementCounter` calls into a few SDK constructors (Word/Felt/AccountId).
-// The successful `increment` path that actually hits `requestTransaction`
-// requires real WASM types we can't easily stub here — those are exercised by
-// the live MidenFi-extension E2E. These unit tests focus on the contract +
-// error paths that don't depend on those constructors.
+// `useIncrementCounter` calls into many SDK constructors (Word/Felt/AccountId,
+// note builders, etc.) and chained builder methods like
+// `TransactionRequestBuilder().withOwnOutputNotes(...).build()`. We don't need
+// real values from these in unit tests — only that calls don't throw and the
+// hook can reach the poll loop. A Proxy-backed stub satisfies all chained
+// calls (`new X(...)`, `X.staticMethod(...)`, `instance.foo().bar(...)`) by
+// returning another callable+constructable stub for any property access.
+//
+// The one shape we DO need real data from is `Word.toU64s()` (the storage-map
+// value the hook reads to derive the count). The proxy intercepts that
+// specific access and returns a 4-tuple BigUint64Array-like value.
 vi.mock("@miden-sdk/miden-sdk", async () => {
-  const actual: Record<string, unknown> = {};
-  const factory = (name: string) =>
-    class {
-      constructor() {}
-      static fromBech32() {
-        return new (factory(name))();
-      }
-      static newFromFelts() {
-        return new (factory(name))();
-      }
-      static fromPackage() {
-        return new (factory(name))();
-      }
-      static deserialize() {
-        return new (factory(name))();
-      }
-      static withAccountTarget() {
-        return new (factory(name))();
-      }
-      static newNetworkAccountTarget() {
-        return new (factory(name))();
-      }
-      static always() {
-        return new (factory(name))();
-      }
-    };
+  const stub = (): object =>
+    new Proxy(function noop() {}, {
+      get: (_t, prop) => {
+        if (prop === "toU64s") return () => [0n, 0n, 0n, 0n];
+        // Avoid breaking Promise resolution / native Symbol checks
+        if (typeof prop === "symbol") return undefined;
+        return stub();
+      },
+      apply: () => stub(),
+      construct: () => stub(),
+    });
+  const exports: Record<string, unknown> = {};
   for (const k of [
     "TransactionRequestBuilder",
     "Package",
@@ -100,9 +92,9 @@ vi.mock("@miden-sdk/miden-sdk", async () => {
     "FeltArray",
     "Word",
   ]) {
-    actual[k] = factory(k);
+    exports[k] = stub();
   }
-  return actual;
+  return exports;
 });
 
 vi.mock("@miden-sdk/miden-wallet-adapter-base", () => ({
@@ -114,6 +106,10 @@ vi.mock("@/lib/miden", () => ({ randomWord: () => ({}) }));
 import { useMiden, useMidenClient } from "@miden-sdk/react";
 import { useMidenFiWallet } from "@miden-sdk/miden-wallet-adapter-react";
 import { useIncrementCounter } from "../useIncrementCounter";
+import {
+  NETWORK_POLL_INTERVAL_MS,
+  NETWORK_POLL_TIMEOUT_MS,
+} from "@/config";
 
 const COUNTER_ADDRESS = "mtst1aqmx7qv6h3y92sqsmunh8uht4ujmfy4j";
 
@@ -181,19 +177,81 @@ describe("useIncrementCounter", () => {
     expect(result.current.count).toBeNull();
   });
 
-  it("does not double-sync per poll iteration (drops await sync())", async () => {
-    // Render the hook normally; `loadCount` runs on mount and calls
-    // `client.syncState()` exactly once. The presence of a second sync would
-    // show up as syncState being called >1 time in a single load.
-    const { result } = renderHook(() => useIncrementCounter(COUNTER_ADDRESS));
-
-    await waitFor(() => {
-      // mount-effect ran loadCount → exactly one syncState
-      expect(mockSyncState).toHaveBeenCalledTimes(1);
+  it("does not call useMiden().sync() during a poll iteration", async () => {
+    // Wallet must be connected so increment doesn't short-circuit before the
+    // poll loop. Provide a real address + a working `requestTransaction`.
+    const requestTransaction = vi.fn(async () => "0xtx");
+    vi.mocked(useMidenFiWallet).mockReturnValue({
+      ...defaultWallet,
+      address: "mtst1arwk88k8smzcq5p30upr6eerw5npmnyz",
+      connected: true,
+      requestTransaction,
     });
-    // No accidental double-sync from anywhere else in the mount path.
-    expect(mockSyncState).toHaveBeenCalledTimes(1);
-    // Sanity: the hook returned a value object.
-    expect(result.current.walletConnected).toBe(false);
+
+    // Spy on the hook-level `sync()`. The fix this test guards against would
+    // call this inside the poll loop; production code now does not.
+    const sync = vi.fn(async () => undefined);
+    vi.mocked(useMiden).mockReturnValue({
+      client: null,
+      isReady: true,
+      isInitializing: false,
+      error: null,
+      sync,
+      runExclusive: <T,>(fn: () => Promise<T>) => fn(),
+      prover: null,
+      signerAccountId: null,
+      signerConnected: null,
+    });
+
+    // Storage-map value drives `count`. `Word.toU64s()` already resolves to
+    // [0n, 0n, 0n, 0n] via the SDK proxy stub above, so `loadCount()` always
+    // returns 0 → `previousCount === latest`. The loop will keep ticking
+    // until the deadline; we only need ONE iteration to elapse, then stop.
+    mockGetAccount.mockResolvedValue({
+      storage: () => ({ getMapItem: () => ({ toU64s: () => [0n, 0n, 0n, 0n] }) }),
+    } as never);
+
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useIncrementCounter(COUNTER_ADDRESS));
+
+      // Wait for mount-effect's loadCount to settle.
+      await vi.waitFor(() => {
+        expect(result.current.count).toBe(0);
+      });
+
+      // Snapshot sync-call count before increment so we measure only what
+      // happens during the click + poll iteration.
+      expect(sync).not.toHaveBeenCalled();
+
+      // Trigger increment without awaiting; the call schedules the poll loop.
+      let incrementPromise: Promise<void> | undefined;
+      await act(async () => {
+        incrementPromise = result.current.increment();
+        // Let microtasks settle for the requestTransaction await.
+        await Promise.resolve();
+      });
+
+      // Advance past one poll interval (2.5s) — exactly one iteration runs.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(NETWORK_POLL_INTERVAL_MS + 50);
+      });
+
+      // The redundant `await sync()` was removed from the poll loop. After
+      // one iteration, `useMiden().sync` must not have been called.
+      expect(sync).not.toHaveBeenCalled();
+
+      // requestTransaction was reached — proves the loop actually ran.
+      expect(requestTransaction).toHaveBeenCalledTimes(1);
+
+      // Drain the rest of the deadline so the increment promise resolves
+      // cleanly and React unmount can finish.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(NETWORK_POLL_TIMEOUT_MS);
+        await incrementPromise;
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

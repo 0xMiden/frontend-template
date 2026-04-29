@@ -45,12 +45,15 @@ Pre-compiled `.masp` packages built with `cargo-miden 0.8.1` (matching `@miden-s
 
 ### Pointing at your own counter
 
-`src/config.ts` controls the deployed counter:
+The counter address is resolved at runtime via the `VITE_MIDEN_COUNTER_ADDRESS` environment variable (`src/config.ts`):
 
-```ts
-export const COUNTER_ADDRESS: string | null = "mtst1aqmx7qv6h3y92sqsmunh8uht4ujmfy4j";
-export const COUNTER_SLOT_NAME = "miden_counter_account::counter_contract::count_map";
-```
+| `VITE_MIDEN_COUNTER_ADDRESS` value | Effect |
+|---|---|
+| unset / commented out (default) | Use the live testnet counter shipped with the template (`mtst1aqmx7qv6h3y92sqsmunh8uht4ujmfy4j`). |
+| empty string (`VITE_MIDEN_COUNTER_ADDRESS=`) | Unconfigured — `<Counter>` renders the "address not configured" card and makes no network calls. |
+| any bech32 string (`mtst1...`) | Uses your own deployment. |
+
+The slot-name constant is fixed in `src/config.ts` and must match the counter contract's storage map name.
 
 To redeploy (e.g. after modifying contract sources):
 
@@ -67,10 +70,8 @@ To redeploy (e.g. after modifying contract sources):
    cp contracts/increment-note/target/miden/release/increment_note.masp \
       <frontend-template>/public/packages/
    ```
-3. Update `COUNTER_ADDRESS` in `src/config.ts`.
+3. Set `VITE_MIDEN_COUNTER_ADDRESS=<your bech32 address>` in `.env` (or your shell environment) — no source edit required.
 4. Verify with `.claude/hooks/check-artifacts.sh` (checks MASP format version).
-
-If `COUNTER_ADDRESS` is set to `null`, `<Counter>` renders an "unconfigured" card with no network activity.
 
 ## Key Dependencies
 
@@ -97,7 +98,7 @@ Automated gates that must all stay green:
 
 ```bash
 npx tsc -b --noEmit       # type check
-npx vitest --run          # 32 unit tests (components, patterns, hooks)
+npx vitest --run          # 36 unit tests (components, hook, patterns)
 npx vite build            # production build (emits dist/)
 npx eslint .              # lint
 ```

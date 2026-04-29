@@ -136,17 +136,33 @@ Every component test should cover:
 
 This template's wallet button (`src/components/AppContent.tsx`) drives off **`useMidenFiWallet()`** from `@miden-sdk/miden-wallet-adapter-react`, not the generic `useSigner()`. The button gates on `wallet.readyState` (from `@miden-sdk/miden-wallet-adapter-base`) so the UI can render an "Install MidenFi Wallet" state before the extension is detected, rather than falling through to the adapter's Chrome-Web-Store fallback. When testing wallet-connect UI, mock both modules and override per test.
 
-Setup at the top of the test file:
+The mock factory must return the **full `WalletContextState`** shape — `useIncrementCounter` reads `address` and `requestTransaction` directly off the hook return, and the wallet button reads `wallet.readyState`. A partial mock will compile (with broad casts) and silently miss contract drift. Setup:
 
 ```tsx
 vi.mock("@miden-sdk/react", () => import("@/__tests__/mocks/miden-sdk-react"));
 vi.mock("@miden-sdk/miden-wallet-adapter-react", () => ({
   useMidenFiWallet: vi.fn(() => ({
+    autoConnect: false,
+    wallets: [],
     wallet: null,
+    address: null,
+    publicKey: null,
     connected: false,
     connecting: false,
-    connect: vi.fn(),
-    disconnect: vi.fn(),
+    disconnecting: false,
+    select: vi.fn(),
+    connect: vi.fn(async () => undefined),
+    disconnect: vi.fn(async () => undefined),
+    requestTransaction: vi.fn(async () => "0xtx"),
+    requestAssets: undefined,
+    requestPrivateNotes: undefined,
+    signBytes: undefined,
+    importPrivateNote: undefined,
+    requestConsumableNotes: undefined,
+    waitForTransaction: undefined,
+    requestSend: undefined,
+    requestConsume: undefined,
+    createAccount: undefined,
   })),
 }));
 vi.mock("@miden-sdk/miden-wallet-adapter-base", () => ({
@@ -161,38 +177,70 @@ vi.mock("@miden-sdk/miden-wallet-adapter-base", () => ({
 import { useMidenFiWallet } from "@miden-sdk/miden-wallet-adapter-react";
 ```
 
-Per-test overrides match the states the template renders:
+Use a typed factory for per-test overrides — `WalletContextState` is the `useMidenFiWallet()` return type:
 
 ```tsx
+type WalletState = ReturnType<typeof useMidenFiWallet>;
+type WalletInner = NonNullable<WalletState["wallet"]>;
+
+function walletState(
+  overrides: Partial<{
+    readyState: "Installed" | "NotDetected" | "Loadable" | "Unsupported";
+    connected: boolean;
+    address: string | null;
+    requestTransaction: WalletState["requestTransaction"];
+  }> = {},
+): WalletState {
+  const {
+    readyState = "Installed",
+    connected = false,
+    address = connected ? "mtst1arwk88k8smzcq5p30upr6eerw5npmnyz" : null,
+    requestTransaction = vi.fn(async () => "0xtx"),
+  } = overrides;
+  // The inner Wallet's `adapter` is an `Adapter` (eventemitter + polling
+  // strategy) — we stub it structurally because the components under test
+  // only read `readyState` off the inner wallet object.
+  const innerWallet = {
+    adapter: {} as WalletInner["adapter"],
+    readyState,
+  } as WalletInner;
+  return {
+    autoConnect: false,
+    wallets: [innerWallet],
+    wallet: innerWallet,
+    address,
+    publicKey: null,
+    connected,
+    connecting: false,
+    disconnecting: false,
+    select: vi.fn(),
+    connect: vi.fn(async () => undefined),
+    disconnect: vi.fn(async () => undefined),
+    requestTransaction,
+    requestAssets: undefined,
+    requestPrivateNotes: undefined,
+    signBytes: undefined,
+    importPrivateNote: undefined,
+    requestConsumableNotes: undefined,
+    waitForTransaction: undefined,
+    requestSend: undefined,
+    requestConsume: undefined,
+    createAccount: undefined,
+  };
+}
+
 // extension not detected — shows disabled "Install MidenFi Wallet"
-vi.mocked(useMidenFiWallet).mockReturnValue({
-  wallet: { adapter: {} as never, readyState: "NotDetected" } as never,
-  connected: false,
-  connecting: false,
-  connect: vi.fn(),
-  disconnect: vi.fn(),
-} as never);
+vi.mocked(useMidenFiWallet).mockReturnValue(
+  walletState({ readyState: "NotDetected" }),
+);
 
-// installed + disconnected — shows "Connect Wallet"
-vi.mocked(useMidenFiWallet).mockReturnValue({
-  wallet: { adapter: {} as never, readyState: "Installed" } as never,
-  connected: false,
-  connecting: false,
-  connect: vi.fn(),
-  disconnect: vi.fn(),
-} as never);
-
-// connected — shows "Disconnect Wallet"
-vi.mocked(useMidenFiWallet).mockReturnValue({
-  wallet: { adapter: {} as never, readyState: "Installed" } as never,
-  connected: true,
-  connecting: false,
-  connect: vi.fn(),
-  disconnect: vi.fn(),
-} as never);
+// installed + connected with an account — shows "Disconnect Wallet"
+vi.mocked(useMidenFiWallet).mockReturnValue(
+  walletState({ readyState: "Installed", connected: true }),
+);
 ```
 
-See `src/components/__tests__/AppContent.test.tsx` for the full pattern (including a `walletState()` helper that cuts per-test boilerplate).
+The factory satisfies `WalletContextState` without `as unknown as` over the whole object — the only narrow `as` is the inner adapter stub, which is unavoidable until we want to construct a real `Adapter` in tests. See `src/components/__tests__/AppContent.test.tsx` for the canonical version.
 
 For app code that needs the selected signer account for client-side flows (transaction-building hooks, etc.), `useMiden()` exposes `signerAccountId` / `signerConnected` as lower-level provider state — mock those via the `@miden-sdk/react` mock factory.
 
