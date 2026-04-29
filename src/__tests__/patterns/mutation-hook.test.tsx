@@ -85,7 +85,7 @@ describe("Mutation Hook Pattern", () => {
   it("shows success message after transaction completes", () => {
     vi.mocked(useSend).mockReturnValue({
       send: vi.fn(),
-      result: { transactionId: "0xabc123" },
+      result: { txId: "0xabc123", note: null },
       isLoading: false,
       stage: "complete" as const,
       error: null,
@@ -121,7 +121,7 @@ describe("Mutation Hook Pattern", () => {
 
   // Test the actual send call — verify correct arguments
   it("calls send with correct arguments on click", async () => {
-    const mockSend = vi.fn(async () => ({ transactionId: "0xtx" }));
+    const mockSend = vi.fn(async () => ({ txId: "0xtx", note: null }));
     vi.mocked(useSend).mockReturnValue({
       send: mockSend,
       result: null,

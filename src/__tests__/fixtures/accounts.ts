@@ -1,12 +1,13 @@
 /**
- * Realistic account fixtures for Miden frontend tests.
- * Uses bech32 IDs and BigInt amounts matching real SDK shapes.
+ * Test fixtures for Miden frontend tests.
+ * Uses hex IDs (network-agnostic) and BigInt amounts matching real SDK shapes.
+ * These are mock values — never parsed by the real SDK at runtime.
  */
 
-export const WALLET_ID_1 = "mtst1qy35qfqdvpjx2e5zf9hkp4vr";
-export const WALLET_ID_2 = "mtst1qa7k9qjf8dp4x2e5zf9hkp5vr";
-export const FAUCET_ID = "mtst1qx9y8zjf2dp4x2e5zf9hkp3vr";
-export const COUNTER_ID = "mtst1aru8adnrqspgcsr3drk2n990lyc070ll";
+export const WALLET_ID_1 = "0x0a00000000000001";
+export const WALLET_ID_2 = "0x0a00000000000002";
+export const FAUCET_ID = "0x0a00000000000003";
+export const COUNTER_ID = "0x0a00000000000004";
 
 export const MOCK_WALLET_HEADER = {
   id: WALLET_ID_1,
@@ -52,6 +53,16 @@ export const MOCK_ASSET_METADATA = {
   decimals: 8,
 };
 
+// TransactionResult shape — matches @miden-sdk/react types for useMint / useConsume /
+// useSwap / useMultiSend / useTransaction result payloads.
 export const MOCK_TRANSACTION_RESULT = {
   transactionId: "0xabc123def456789012345678901234567890123456789012345678901234abcd",
+};
+
+// SendResult shape — distinct from TransactionResult. @miden-sdk/react's useSend
+// returns { txId, note }, not { transactionId }. Keep these fixtures separate so
+// mocks for useSend don't bleed into mocks for TransactionResult-typed hooks.
+export const MOCK_SEND_RESULT = {
+  txId: "0xabc123def456789012345678901234567890123456789012345678901234abcd",
+  note: null,
 };

@@ -40,7 +40,7 @@ Accounts are composed from **components** — reusable Rust modules annotated wi
 ### Notes
 Notes are **UTXO-like messages** for asynchronous inter-account communication. A note contains:
 - **Script** — Logic that executes when the note is consumed
-- **Inputs** — Data passed to the script (Vec<Felt>)
+- **Storage** — Data accessible to the script during execution (`NoteStorage`, Vec<Felt>)
 - **Assets** — Fungible/non-fungible tokens attached to the note
 - **Metadata** — Sender, tag, note type (public/private)
 
@@ -84,7 +84,9 @@ A transaction is a **single-account state transition** with 4 phases:
 | `BasicWallet` | Standard wallet: `receive_asset()`, `move_asset_to_note()` |
 | `BasicFungibleFaucet` | Mint/burn fungible tokens |
 | `NoAuth` | No authentication (for testing) |
-| `AuthFalcon512Rpo` | Production signature authentication |
+| `AuthSingleSig` | Production signature authentication — unified auth component covering both Falcon-512 and ECDSA-K256 key types |
+
+**v14 note**: `AuthSingleSig` unifies what were previously per-scheme auth components (one for Falcon-512, one for ECDSA-K256) into a single component that dispatches on the key type ([miden-client#1798](https://github.com/0xMiden/miden-client/pull/1798)). In the same release the underlying Falcon-512 signature scheme adopted Poseidon2 as its hash function, and is now named `Falcon512Poseidon2`. If you see the older per-scheme component names or the old signature-scheme name in examples or docs, the source predates 0.14 and needs updating.
 
 ## Development Model
 

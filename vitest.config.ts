@@ -17,9 +17,8 @@ export default defineConfig({
     passWithNoTests: true,
     server: {
       deps: {
-        // The wallet-adapter-reactui sub-package has incorrect exports in package.json.
         // Tests mock the wallet adapter at the module level, so externalizing is safe.
-        external: [/@miden-sdk\/miden-wallet-adapter/],
+        external: [/@miden-sdk\/miden-wallet-adapter-react/],
       },
     },
   },

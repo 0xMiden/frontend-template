@@ -23,6 +23,7 @@ import {
   MOCK_CONSUMABLE_NOTE_RECORD,
   MOCK_NOTE_SUMMARY,
   MOCK_TRANSACTION_RESULT,
+  MOCK_SEND_RESULT,
   FAUCET_ID,
 } from "../fixtures";
 
@@ -95,9 +96,24 @@ export const useNoteStream = vi.fn(() => ({
 // Mutation hooks
 // ---------------------------------------------------------------------------
 
+// Mutation hooks that resolve to TransactionResult { transactionId } —
+// useMint / useConsume / useSwap / useMultiSend / useTransaction.
 function createMutationMock(mutateKey: string) {
   return vi.fn(() => ({
     [mutateKey]: vi.fn(async () => MOCK_TRANSACTION_RESULT),
+    result: null,
+    isLoading: false,
+    stage: "idle" as const,
+    error: null,
+    reset: vi.fn(),
+  }));
+}
+
+// useSend resolves to SendResult { txId, note } — not TransactionResult.
+// Keep this separate so tests that call `send()` get the correct shape.
+function createSendMock() {
+  return vi.fn(() => ({
+    send: vi.fn(async () => MOCK_SEND_RESULT),
     result: null,
     isLoading: false,
     stage: "idle" as const,
@@ -122,7 +138,7 @@ export const useCreateFaucet = vi.fn(() => ({
   reset: vi.fn(),
 }));
 
-export const useSend = createMutationMock("send");
+export const useSend = createSendMock();
 export const useMultiSend = createMutationMock("sendMany");
 export const useMint = createMutationMock("mint");
 export const useConsume = createMutationMock("consume");
@@ -181,6 +197,7 @@ export const useMiden = vi.fn(() => ({
   runExclusive: vi.fn(async <T>(fn: () => Promise<T>) => fn()),
   prover: null,
   signerAccountId: null,
+  signerConnected: null,
 }));
 
 export const useMidenClient = vi.fn(() => ({}));
