@@ -4,11 +4,27 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 vi.mock("@miden-sdk/react", () => import("@/__tests__/mocks/miden-sdk-react"));
 vi.mock("@miden-sdk/miden-wallet-adapter-react", () => ({
   useMidenFiWallet: vi.fn(() => ({
+    autoConnect: false,
+    wallets: [],
     wallet: null,
+    address: null,
+    publicKey: null,
     connected: false,
     connecting: false,
-    connect: vi.fn(),
-    disconnect: vi.fn(),
+    disconnecting: false,
+    select: vi.fn(),
+    connect: vi.fn(async () => undefined),
+    disconnect: vi.fn(async () => undefined),
+    requestTransaction: vi.fn(async () => "0xtx"),
+    requestAssets: undefined,
+    requestPrivateNotes: undefined,
+    signBytes: undefined,
+    importPrivateNote: undefined,
+    requestConsumableNotes: undefined,
+    waitForTransaction: undefined,
+    requestSend: undefined,
+    requestConsume: undefined,
+    createAccount: undefined,
   })),
 }));
 vi.mock("@miden-sdk/miden-wallet-adapter-base", () => ({
@@ -29,30 +45,58 @@ import userEvent from "@testing-library/user-event";
 import { AppContent } from "../AppContent";
 
 type WalletState = ReturnType<typeof useMidenFiWallet>;
+type WalletInner = NonNullable<WalletState["wallet"]>;
 
 function walletState(
   overrides: Partial<{
     readyState: "Installed" | "NotDetected" | "Loadable" | "Unsupported";
     connected: boolean;
     connecting: boolean;
+    address: string | null;
     connect: () => Promise<void>;
     disconnect: () => Promise<void>;
+    requestTransaction: WalletState["requestTransaction"];
   }> = {},
 ): WalletState {
   const {
     readyState = "Installed",
     connected = false,
     connecting = false,
-    connect = vi.fn(),
-    disconnect = vi.fn(),
+    address = connected ? "mtst1arwk88k8smzcq5p30upr6eerw5npmnyz" : null,
+    connect = vi.fn(async () => undefined),
+    disconnect = vi.fn(async () => undefined),
+    requestTransaction = vi.fn(async () => "0xtx"),
   } = overrides;
+  // Build a shape that satisfies WalletContextState; the inner `Wallet`
+  // (`{ adapter, readyState }`) shape requires an Adapter, which we stub
+  // with a structural cast since the component only reads `readyState`.
+  const innerWallet = {
+    adapter: {} as WalletInner["adapter"],
+    readyState,
+  } as WalletInner;
   return {
-    wallet: { adapter: {} as never, readyState } as never,
+    autoConnect: false,
+    wallets: [innerWallet],
+    wallet: innerWallet,
+    address,
+    publicKey: null,
     connected,
     connecting,
+    disconnecting: false,
+    select: vi.fn(),
     connect,
     disconnect,
-  } as unknown as WalletState;
+    requestTransaction,
+    requestAssets: undefined,
+    requestPrivateNotes: undefined,
+    signBytes: undefined,
+    importPrivateNote: undefined,
+    requestConsumableNotes: undefined,
+    waitForTransaction: undefined,
+    requestSend: undefined,
+    requestConsume: undefined,
+    createAccount: undefined,
+  };
 }
 
 const midenReady = {

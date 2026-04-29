@@ -1,5 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { useMiden, useMidenClient } from "@miden-sdk/react";
+// `useMidenFiWallet()` returns `WalletContextState` (see
+// `@miden-sdk/miden-wallet-adapter-react/dist/MidenFiSignerProvider.d.ts`),
+// which exposes `address`, `connected`, and `requestTransaction` directly
+// at the top level — distinct from the inner `wallet` field on the same
+// return (which is a `Wallet` adapter object, not the address).
 import { useMidenFiWallet } from "@miden-sdk/miden-wallet-adapter-react";
 import { Transaction } from "@miden-sdk/miden-wallet-adapter-base";
 import {
@@ -35,11 +40,13 @@ export function useIncrementCounter(counterAddress: string) {
   const [isWaiting, setIsWaiting] = useState(false);
   const [count, setCount] = useState<number | null>(null);
 
-  const { runExclusive, isReady, sync } = useMiden();
-  const wallet = useMidenFiWallet();
+  const { runExclusive, isReady } = useMiden();
+  const {
+    address: walletAddress,
+    connected: walletConnected,
+    requestTransaction,
+  } = useMidenFiWallet();
   const client = useMidenClient();
-  const walletConnected = wallet.connected === true;
-  const walletAddress = wallet.address;
 
   // Fetch the on-chain counter value. Imports the counter account on first
   // call, syncs from the network, and reads the storage map. All WASM calls
@@ -58,6 +65,9 @@ export function useIncrementCounter(counterAddress: string) {
       const account = await client.getAccount(counterAccountId);
       if (!account) {
         setCount(null);
+        setError(
+          `Counter account not found on-chain (${counterAddress}). Check VITE_MIDEN_COUNTER_ADDRESS / src/config.ts and confirm the counter is deployed on the configured network.`,
+        );
         return null;
       }
       const countKey = Word.newFromFelts([
@@ -72,6 +82,8 @@ export function useIncrementCounter(counterAddress: string) {
       // Storage map value is a Word whose first element holds the Felt count.
       const newCount = value ? Number(value.toU64s()[0]) : 0;
       setCount(newCount);
+      // Successful fetch — clear any prior unreachable/timeout error.
+      setError(null);
       return newCount;
     });
   }, [isReady, client, runExclusive, counterAddress]);
@@ -83,7 +95,12 @@ export function useIncrementCounter(counterAddress: string) {
   }, [loadCount]);
 
   const increment = useCallback(async () => {
-    if (!walletAddress) return;
+    if (!walletAddress) {
+      setError(
+        "No wallet account available. Connect MidenFi to a testnet account before incrementing.",
+      );
+      return;
+    }
     setError(null);
     setIsSubmitting(true);
     try {
@@ -116,7 +133,7 @@ export function useIncrementCounter(counterAddress: string) {
         .withOwnOutputNotes(new NoteArray([note]))
         .build();
 
-      if (!wallet.requestTransaction) {
+      if (!requestTransaction) {
         throw new Error("Wallet does not support requestTransaction");
       }
       const tx = Transaction.createCustomTransaction(
@@ -124,7 +141,7 @@ export function useIncrementCounter(counterAddress: string) {
         counterAddress,
         txRequest,
       );
-      await wallet.requestTransaction(tx);
+      await requestTransaction(tx);
       setIsSubmitting(false);
 
       // Capture the pre-submission count so the poll loop knows what value
@@ -144,7 +161,8 @@ export function useIncrementCounter(counterAddress: string) {
       let changed = false;
       while (!changed && Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, NETWORK_POLL_INTERVAL_MS));
-        await sync();
+        // `loadCount()` calls `client.syncState()` internally inside
+        // `runExclusive`; no need for a second `sync()` here.
         const latest = await loadCount();
         changed = latest !== null && latest !== previousCount;
       }
@@ -163,7 +181,7 @@ export function useIncrementCounter(counterAddress: string) {
       setIsWaiting(false);
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [walletAddress, wallet, counterAddress, sync, loadCount, count]);
+  }, [walletAddress, requestTransaction, counterAddress, loadCount, count]);
 
   return {
     increment,

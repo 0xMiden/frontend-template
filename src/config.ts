@@ -1,5 +1,19 @@
-// Network counter account deployed on Miden testnet
-export const COUNTER_ADDRESS: string | null = "mtst1aqmx7qv6h3y92sqsmunh8uht4ujmfy4j";
+// Network counter account deployed on Miden testnet.
+//
+// Resolution rules for `COUNTER_ADDRESS`:
+//   - `VITE_MIDEN_COUNTER_ADDRESS` unset (or omitted) → use the live default
+//     deployment (the testnet counter the template ships with).
+//   - `VITE_MIDEN_COUNTER_ADDRESS=""` (explicit empty string) → unconfigured,
+//     `<Counter>` renders the "address not configured" card.
+//   - Any other string → that string is used verbatim (e.g. your own deploy).
+const DEFAULT_COUNTER_ADDRESS = "mtst1aqmx7qv6h3y92sqsmunh8uht4ujmfy4j";
+const configuredCounterAddress: string | undefined =
+  import.meta.env.VITE_MIDEN_COUNTER_ADDRESS;
+
+export const COUNTER_ADDRESS: string | null =
+  configuredCounterAddress === ""
+    ? null
+    : (configuredCounterAddress ?? DEFAULT_COUNTER_ADDRESS);
 
 // StorageMap slot name for the counter
 export const COUNTER_SLOT_NAME =

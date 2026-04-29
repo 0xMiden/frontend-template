@@ -28,9 +28,10 @@ describe("Counter gate", () => {
   });
 
   it("shows not-configured message when COUNTER_ADDRESS is null", () => {
-    vi.spyOn(config, "COUNTER_ADDRESS", "get").mockReturnValue(
-      null as unknown as string,
-    );
+    // The env-wired resolver in `config.ts` returns `null` when
+    // `VITE_MIDEN_COUNTER_ADDRESS=""` (explicit empty string). Simulate that
+    // by overriding the module's exported value directly.
+    vi.spyOn(config, "COUNTER_ADDRESS", "get").mockReturnValue(null);
 
     render(<Counter />);
     expect(
