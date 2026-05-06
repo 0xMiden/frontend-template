@@ -15,13 +15,7 @@
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/run-affected-tests.sh",
             "timeout": 120,
             "statusMessage": "Running affected tests..."
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
+          },
           {
             "type": "command",
             "command": "cd \"$CLAUDE_PROJECT_DIR\" && npx vitest --run && npx tsc -b --noEmit && npx vite build",
