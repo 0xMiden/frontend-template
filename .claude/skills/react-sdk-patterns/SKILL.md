@@ -361,29 +361,30 @@ const { account, assets, getBalance } = useAccount(accountId);
 // assets: AssetBalance[]; getBalance(faucetId): bigint
 ```
 
-For lower-level reads (individual storage slots, map items, custom contract slots), drop into the underlying client. The React SDK serializes WASM access via `runExclusive`:
+For lower-level reads (custom contract storage slots, map items), use `Account.storage()`. The React SDK serializes WASM access via `runExclusive`:
 
 ```tsx
 const client = useMidenClient();
 const { runExclusive } = useMiden();
 
 await runExclusive(async () => {
-  const details = await client.accounts.getDetails(accountId);
-  // details: header + status + vault summary
+  const id = AccountId.fromBech32(addressBech32);
+  if (!(await client.getAccount(id))) {
+    await client.importAccountById(id);
+  }
+  await client.syncState();
+  const account = await client.getAccount(id);
+  if (!account) return;
+  // AccountStorage (miden_client_web.d.ts:639-660):
+  const value = account.storage().getItem("my_slot_name");
+  // For storage maps:
+  const mapValue = account.storage().getMapItem("my_map_slot", keyWord);
 });
 ```
 
-For per-slot reads on custom contracts, use the lazy `accountReader` and keep it inside `runExclusive` so it cannot race with a write:
+`Account.storage()` returns an `AccountStorage`. Both `getItem(slot_name: string)` and `getMapItem(slot_name: string, key: Word)` return `Word | undefined`. Use slot-name strings (e.g. `COUNTER_SLOT_NAME` in `src/config.ts`), not numeric indices. See `src/hooks/useIncrementCounter.ts:73-83` for the live in-template usage.
 
-```tsx
-await runExclusive(async () => {
-  const reader = client.accountReader(accountId);
-  const slot = await reader.getStorageSlot(slotIndex);
-  // For maps: const value = await reader.getMapItem(slotIndex, key);
-});
-```
-
-`client.accounts.getOrImport(ref)` tries `get(ref)` first and falls back to `import(ref)` if the account is not yet tracked locally. For raw WebClient method signatures, see the `web-client-usage` skill.
+`useMidenClient()` returns the raw `WasmWebClient`. Its direct methods include `getAccount(accountId)`, `getAccountStorage(accountId)`, `importAccountById(accountId)`, `syncState()`, and the transaction-request factories (`newSendTransactionRequest`, `newConsumeTransactionRequest`, `newMintTransactionRequest`, `newSwapTransactionRequest`). For compile-from-source, call `client.createCodeBuilder()` and use the returned `CodeBuilder`'s `compileNoteScript(program: string)` / `compileTxScript(tx_script: string)` (`miden_client_web.d.ts`:1058-1115, factory at :4237). The higher-level `MidenClient.accounts.getOrImport` resource API lives on the standalone `MidenClient` (see `web-client-usage`).
 
 ## Account Import then Sync then Read Storage Flow
 
@@ -404,38 +405,114 @@ function ImportAndInspect({ accountIdHex }: { accountIdHex: string }) {
 }
 ```
 
-`useImportAccount` accepts `{ type: "id" | "file" | "seed", ... }`. After `sync()` resolves, the `useAccount(accountIdHex)` view reflects the latest chain state. For the raw client equivalents (`accounts.getOrImport`, `client.sync()`, `accounts.getDetails`), see the `web-client-usage` skill.
+`useImportAccount` accepts `{ type: "id" | "file" | "seed", ... }`. After `sync()` resolves, the `useAccount(accountIdHex)` view reflects the latest chain state. For the raw `WasmWebClient` methods used by these hooks under the hood (`client.getAccount`, `client.importAccountById`, `client.syncState`), see `src/hooks/useIncrementCounter.ts` for a worked example. For the higher-level `MidenClient.accounts.*` resource API on a standalone `MidenClient` (outside React), see the `web-client-usage` skill.
 
 ## Custom Notes and .masp Package Loading
 
 `.masp` package files (compiled MASM artifacts) are produced by `cargo miden build` in the `project-template/` workspace and copied into `frontend-template/public/packages/` during the contract handoff (see `CLAUDE.md` "Contract Artifact Handoff" section).
 
-To load a `.masp` package on the frontend and execute a custom transaction with it:
+The example below builds a custom transaction that emits two output notes carrying fungible assets. Each note has multi-felt input storage that the note script (compiled from MASM into `.masp`) reads and asserts on at consume time. The transaction is signed and submitted by the connected wallet via `useMidenFiWallet().requestTransaction(...)`.
 
 ```tsx
-const client = useMidenClient();
-const { execute } = useTransaction();
+import { useMidenFiWallet } from "@miden-sdk/miden-wallet-adapter-react";
+import { Transaction } from "@miden-sdk/miden-wallet-adapter-base";
+import {
+  Package,
+  NoteScript,
+  Note,
+  NoteAssets,
+  NoteMetadata,
+  NoteRecipient,
+  NoteStorage,
+  NoteTag,
+  NoteType,
+  NoteAttachment,
+  NoteExecutionHint,
+  NoteArray,
+  AccountId,
+  Felt,
+  FeltArray,
+  FungibleAsset,
+  TransactionRequestBuilder,
+} from "@miden-sdk/miden-sdk";
+import { randomWord } from "@/lib/miden";
 
-async function submitCustomTx(senderId: string, scriptMasm: string, libMasm: string) {
-  // .masp packages live under public/packages/ and are fetched at runtime
-  const pkgBytes = await fetch("/packages/my_contract.masp").then(r => r.arrayBuffer());
+const { requestTransaction } = useMidenFiWallet();
 
-  await execute({
-    accountId: senderId,
-    request: async (c) => {
-      const script = await c.compile.txScript({
-        code: scriptMasm,
-        libraries: [{ namespace: "my::lib", code: libMasm, linking: "dynamic" }],
-      });
-      return c.newCustomTransactionRequest({ script, packageBytes: pkgBytes });
-    },
-  });
+async function submitMultiNoteTx(
+  senderBech32: string,
+  targetBech32: string,
+  faucetBech32: string,
+) {
+  // (a) .masp loading: fetch the pre-built artifact and decode the note script.
+  const buf = await fetch("/packages/my_note.masp").then((r) => r.arrayBuffer());
+  const pkg = Package.deserialize(new Uint8Array(buf));
+  const noteScript = NoteScript.fromPackage(pkg);
+
+  const sender = AccountId.fromBech32(senderBech32);
+  const target = AccountId.fromBech32(targetBech32);
+  const faucet = AccountId.fromBech32(faucetBech32);
+
+  // (b) Multi-input note storage: each output note carries multiple Felt
+  // inputs that the MASM script reads from its NoteStorage. Assertions on
+  // these felts (e.g. "the first felt must equal the expected nonce") live
+  // in the .masp script source under project-template/contracts/.
+  function makeRecipient(seedFelts: bigint[]): NoteRecipient {
+    const inputs = new FeltArray();
+    for (const v of seedFelts) inputs.push(new Felt(v));
+    return new NoteRecipient(randomWord(), noteScript, new NoteStorage(inputs));
+  }
+
+  // (c) Asset transfers: each note carries fungible assets that move to the
+  // recipient when the note is consumed. FungibleAsset(faucet_id, amount)
+  // is at miden_client_web.d.ts:1492.
+  const assets1 = new NoteAssets([new FungibleAsset(faucet, 1000n)]);
+  const assets2 = new NoteAssets([new FungibleAsset(faucet, 500n)]);
+
+  const tag = NoteTag.withAccountTarget(target);
+  const attachment = NoteAttachment.newNetworkAccountTarget(
+    target,
+    NoteExecutionHint.always(),
+  );
+  const metadata = new NoteMetadata(sender, NoteType.Public, tag).withAttachment(
+    attachment,
+  );
+
+  // Two output notes with different felt inputs and asset amounts.
+  const note1 = new Note(assets1, metadata, makeRecipient([1n, 2n, 3n]));
+  const note2 = new Note(assets2, metadata, makeRecipient([4n, 5n, 6n]));
+
+  // (d) Multi-output transaction: emit both notes in one transaction.
+  // For transactions that consume multiple input notes simultaneously,
+  // TransactionRequestBuilder.withInputNotes(NoteAndArgsArray) is the
+  // counterpart (miden_client_web.d.ts:3963).
+  const txRequest = new TransactionRequestBuilder()
+    .withOwnOutputNotes(new NoteArray([note1, note2]))
+    .build();
+
+  // (f) Submission via the wallet adapter.
+  const tx = Transaction.createCustomTransaction(senderBech32, targetBech32, txRequest);
+  if (!requestTransaction) throw new Error("Wallet does not support requestTransaction");
+  await requestTransaction(tx);
 }
 ```
 
-For multi-input custom note flows that must round-trip through a connected wallet (signing happens in the extension), route through the wallet adapter instead of `useTransaction`. Reference `src/hooks/useIncrementCounter.ts` for a worked example using `useMidenFiWallet().requestTransaction(CustomTransaction)` with a `.masp`-loaded counter contract: it builds the input note, asserts the expected counter value, and submits via the wallet.
+Notes on this pattern:
 
-For the underlying SDK calls (`client.compile.noteScript`, `client.compile.txScript`, `client.transactions.execute`, foreign-account `storage` requirements, `returnNote: true` for out-of-band private-note delivery), see the `web-client-usage` skill.
+- **Assertions live in MASM, not in TypeScript.** The note script compiled into `.masp` reads its `NoteStorage` felts at consume time and aborts the transaction if its assertions fail. The frontend's job is to construct and submit; MASM enforces. See `project-template/contracts/` for where to author MASM with assertion ops.
+- **Single-output reference for simpler flows.** For a simpler worked example using only one output note with empty assets and a single consume action, see `src/hooks/useIncrementCounter.ts`. That hook is intentionally simpler and does not exercise asset transfers or multi-output emission.
+- **Compile from source (no `.masp`) when needed.** When the note script is not pre-bundled as `.masp`, compile it through `CodeBuilder`. **`compileNoteScript`/`compileTxScript` are methods of `CodeBuilder`, not of `WasmWebClient`.** The pattern is:
+
+```tsx
+const client = useMidenClient();
+const builder = client.createCodeBuilder();
+// optionally: builder.linkStaticLibrary(myLib) or builder.linkDynamicLibrary(myLib)
+const noteScript = builder.compileNoteScript(noteSourceMasm);
+const txScript = builder.compileTxScript(txSourceMasm);
+```
+
+  See `miden_client_web.d.ts`:1058-1115 for `CodeBuilder` and :4237 for `createCodeBuilder()`. As the React-idiomatic alternative, `useCompile()` (`@miden-sdk/react/dist/index.d.ts`:1171-1196) wraps `CompilerResource` from the standalone `MidenClient` and exposes `noteScript`, `txScript`, `component`, `isReady` at the hook layer.
+- **Inside `useTransaction`'s `request` callback** the parameter is a `WasmWebClient` (`@miden-sdk/react/dist/index.d.ts`:393). Use `client.createCodeBuilder()` for compile, then build the `TransactionRequest` with `TransactionRequestBuilder` and return it. For the higher-level `MidenClient.compile.*` and `MidenClient.transactions.execute` resource API on a standalone `MidenClient`, see `web-client-usage`.
 
 ## Cross-SDK Type Reference
 
@@ -451,11 +528,11 @@ Common app-developer types:
 | `Account`, `AccountHeader` | `@miden-sdk/react` | `id`, `nonce`, `bech32id()` |
 | `AccountId` | `@miden-sdk/miden-sdk` | construct via `AccountId.fromHex(hex)`; throws on invalid hex |
 | `Address` | `@miden-sdk/miden-sdk` | bech32 wrapper; `Address.fromBech32(...)` |
-| `Note`, `InputNoteRecord`, `ConsumableNoteRecord`, `OutputNote` | `@miden-sdk/react` | input notes are received; output notes are produced |
-| `NoteVisibility` enum | `@miden-sdk/miden-sdk` | `Public`, `Private`. Replaces the legacy `NoteType`. |
+| `Note`, `InputNoteRecord`, `ConsumableNoteRecord` | `@miden-sdk/react` | re-exported from `@miden-sdk/miden-sdk`. Input notes are received; for output-note types and private-note flows see `web-client-usage`. |
+| `NoteVisibility` (constants + string-union) | `@miden-sdk/miden-sdk` | `const NoteVisibility = { Public: 'public', Private: 'private' }` plus `type NoteVisibility = 'public' \| 'private'` (`api-types.d.ts`:95-101). NOT an enum. Coexists with the raw WASM `NoteType` enum (`miden_client_web.d.ts`:2889) which the template uses directly when building notes via the WASM types (see `src/hooks/useIncrementCounter.ts`). |
 | `AccountType`, `AuthScheme`, `StorageMode` | `@miden-sdk/miden-sdk` | enums; see `web-client-usage` "Visibility & Account Types". |
 | `TransactionRequest` | `@miden-sdk/react` | client factory functions return this |
-| `Word` | `@miden-sdk/miden-sdk` | 32-byte (4 felts) value; `Word.toU64s()` returns `bigint[]` of length 4 |
+| `Word` | `@miden-sdk/miden-sdk` | 32-byte (4 felts) value; `Word.toU64s()` returns `BigUint64Array` of length 4 (each lane is a `bigint` after subscript). See `miden_client_web.d.ts`:4535. |
 
 Do not hardcode this table for long-term reference. The `.d.ts` files stay in lockstep with the installed package version; this list will drift.
 
@@ -467,17 +544,17 @@ The Rust (`miden-client`) and TypeScript (`@miden-sdk/miden-sdk`) SDKs share con
 |---------|------------------------------------------|--------------------------------------|
 | Token amount | `u64` | `bigint` |
 | Field element | `Felt` (Goldilocks `u64` mod p) | `Felt` (wraps `u64`) |
-| 32-byte word | `Word` (`[Felt; 4]`) | `Word`; `toU64s(): bigint[]` length 4 |
+| 32-byte word | `Word` (`[Felt; 4]`) | `Word`; `toU64s(): BigUint64Array` length 4 (each lane is `bigint` after subscript). |
 | Account identifier | `AccountId` | `AccountId`; construct via `AccountId.fromHex` |
-| Note visibility | `NoteType` enum | `NoteVisibility` enum (legacy alias `NoteType` is deprecated) |
+| Note visibility | `NoteType` enum | constants + string-union `NoteVisibility` (`'public' \| 'private'`) at the high-level `MidenClient` resource API; raw WASM `NoteType` enum (`Private = 2`, `Public = 1`) is also exported and used directly when constructing notes via the WASM types (see `src/hooks/useIncrementCounter.ts`). The two coexist; pick the layer your code lives in. |
 | Account type | `AccountType` | `AccountType` enum |
 | Authentication scheme | `AuthScheme` | `AuthScheme` enum |
 | Storage mode | `StorageMode` | `StorageMode` enum |
 
 Common gotchas:
 
-- TS method names sometimes differ from Rust ones (e.g. `FeltArray.append` in TS vs `push` on a Rust `Vec`). When a method seems missing, consult `node_modules/@miden-sdk/miden-sdk/dist/index.d.ts` first instead of guessing the TS name from a Rust signature.
+- The TS method is `FeltArray.push(element: Felt)` (`miden_client_web.d.ts`:1324); there is no `FeltArray.append`. To convert a `Felt` to a JS `bigint`, use `Felt.asInt()` (`miden_client_web.d.ts`:1296). When a Rust method appears missing in TS, consult `node_modules/@miden-sdk/miden-sdk/dist/index.d.ts` and `dist/crates/miden_client_web.d.ts` first instead of guessing the TS spelling.
 - TS amounts are always `bigint`. Mixing `number` causes silent precision loss above `Number.MAX_SAFE_INTEGER` and `TypeError` below.
-- `Word.toU64s()` returns `bigint[]` of length 4. Use it when reading the four `u64` lanes from a Value storage slot or building assertions on `Word` outputs.
+- `Word.toU64s()` returns `BigUint64Array` of length 4 (`miden_client_web.d.ts`:4535). Each lane is a `bigint` (e.g. `word.toU64s()[0]`). Use it when reading the four `u64` lanes from a Value storage slot or building assertions on `Word` outputs.
 
 For the canonical Rust types, see [`0xMiden/miden-client`](https://github.com/0xMiden/miden-client) and the `miden_objects` crate. For the canonical TS types, see `node_modules/@miden-sdk/miden-sdk/dist/index.d.ts`.
