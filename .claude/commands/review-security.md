@@ -46,7 +46,7 @@ This can be a file, directory, or glob pattern. Read the relevant source files a
 
 ## 7. Supply Chain & Dependencies
 - Are there known vulnerable dependencies?
-- Are WASM binaries reproducible from source?
+- Are lockfile integrity hashes (`package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`) unchanged when WASM-bundled dependencies (e.g. `@miden-sdk/*`) update?
 - Could wasm-bindgen-generated glue code introduce issues?
 
 ## Output Format

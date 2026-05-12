@@ -32,8 +32,11 @@ The SDK exposes a top-level `MidenClient` whose state is split across typed
 
 `MidenClient` is the public surface. The underlying WASM-bound class is still
 exported as `WasmWebClient` (alias for the legacy `WebClient`) for low-level
-operations the resource API does not yet wrap - reach for it via the wrapped
-`#inner` only when you must.
+operations the resource API does not yet wrap. To reach it, either use the
+React `useMidenClient()` hook or import `WasmWebClient` directly from
+`@miden-sdk/miden-sdk` (the class is `@internal` but exported). `MidenClient`
+keeps its wrapped client in a real JS private field (`#inner`), so external
+code cannot reach in directly.
 
 ## Client Initialization
 
@@ -182,6 +185,8 @@ for the Poseidon2-based Falcon-512 scheme.
 
 ## Account Creation
 
+Type discriminator on `auth`: wallets and faucets take `auth: AuthSchemeType` (a `"falcon" | "ecdsa"` string-union, e.g. `AuthScheme.Falcon`); custom contracts take `auth: AuthSecretKey` (a concrete WASM instance).
+
 ```typescript
 // Wallet - defaults: mutable, private, Falcon
 const wallet = await client.accounts.create();
@@ -225,7 +230,7 @@ const { txId } = await client.transactions.send({
   to: "0xrecipient...",            // any account ref
   token: faucet,                   // faucet account ref - identifies the asset
   amount: 100n,
-  type: NoteVisibility.Public,     // optional, defaults to "private"
+  type: NoteVisibility.Public,     // optional, defaults to "public" (raw SDK; resolveNoteType in dist/index.js:307-316). React useSend defaults to "private".
   reclaimAfter: 100,               // optional - sender can reclaim after this block
   timelockUntil: 50,               // optional - recipient can consume after this block
   waitForConfirmation: true,
@@ -371,7 +376,7 @@ its commitment with the account.
 ## Compile
 
 ```typescript
-await client.compile.component({ code, slots, supportAllTypes: true });
+await client.compile.component({ code, slots, supportAllTypes: true }); // supportAllTypes defaults to true (api-types.d.ts:784); set false if your component supplies its own auth-tx kernel invocation.
 await client.compile.txScript({ code, libraries });
 await client.compile.noteScript({ code, libraries });
 ```
@@ -440,6 +445,10 @@ while (true) {
    `Note`, `AccountId`, `NoteAndArgsArray` etc. owns Rust memory through the
    WASM ArrayBuffer. After `terminate()` they panic with "null pointer
    passed to rust" - drop references on unmount.
-8. **Calling `accountReader(...)` in parallel with a write** - the readers
-   share the WASM client. Wrap concurrent flows with `client.waitForIdle()`
-   or rely on the React SDK's `runExclusive`.
+8. **Calling `accountReader(...)` in parallel with a write** (the method lives
+   on the raw `WasmWebClient`, accessed via React's `useMidenClient()` or a
+   direct `WasmWebClient` import; not on `MidenClient`) - the readers share
+   the WASM client. Wrap concurrent flows with `client.waitForIdle()` or rely
+   on the React SDK's `runExclusive`. See `frontend-pitfalls` for the
+   cross-tab IndexedDB contention case that the `storeName` initialization
+   example above isolates against.

@@ -382,7 +382,7 @@ await runExclusive(async () => {
 });
 ```
 
-`Account.storage()` returns an `AccountStorage`. Both `getItem(slot_name: string)` and `getMapItem(slot_name: string, key: Word)` return `Word | undefined`. Use slot-name strings (e.g. `COUNTER_SLOT_NAME` in `src/config.ts`), not numeric indices. See `src/hooks/useIncrementCounter.ts:73-83` for the live in-template usage.
+`Account.storage()` returns an `AccountStorage`. Both `getItem(slot_name: string)` and `getMapItem(slot_name: string, key: Word)` return `Word | undefined`. Use slot-name strings (e.g. `COUNTER_SLOT_NAME` in `src/config.ts`), not numeric indices. See `src/hooks/useIncrementCounter.ts:73-83` for the live in-template `getMapItem` example.
 
 `useMidenClient()` returns the raw `WasmWebClient`. Its direct methods include `getAccount(accountId)`, `getAccountStorage(accountId)`, `importAccountById(accountId)`, `syncState()`, and the transaction-request factories (`newSendTransactionRequest`, `newConsumeTransactionRequest`, `newMintTransactionRequest`, `newSwapTransactionRequest`). For compile-from-source, call `client.createCodeBuilder()` and use the returned `CodeBuilder`'s `compileNoteScript(program: string)` / `compileTxScript(tx_script: string)` (`miden_client_web.d.ts`:1058-1115, factory at :4237). The higher-level `MidenClient.accounts.getOrImport` resource API lives on the standalone `MidenClient` (see `web-client-usage`).
 
@@ -464,8 +464,8 @@ async function submitMultiNoteTx(
   }
 
   // (c) Asset transfers: each note carries fungible assets that move to the
-  // recipient when the note is consumed. FungibleAsset(faucet_id, amount)
-  // is at miden_client_web.d.ts:1492.
+  // recipient when the note is consumed. FungibleAsset is declared at
+  // miden_client_web.d.ts:1474 (constructor `(faucet_id, amount: bigint)` at :1492).
   const assets1 = new NoteAssets([new FungibleAsset(faucet, 1000n)]);
   const assets2 = new NoteAssets([new FungibleAsset(faucet, 500n)]);
 
@@ -518,8 +518,10 @@ const txScript = builder.compileTxScript(txSourceMasm);
 
 The runtime types come from `@miden-sdk/react` (re-exported from `@miden-sdk/miden-sdk` for the underlying `MidenClient` types). The `.d.ts` files are the source of truth. Look them up in:
 
-- `node_modules/@miden-sdk/react/dist/index.d.ts` for hook return types and option types
-- `node_modules/@miden-sdk/miden-sdk/dist/index.d.ts` for `MidenClient`, `Account`, `AccountId`, `Note`, `Word`, etc.
+- the installed `.d.ts` for `@miden-sdk/react` (hook return types and option types)
+- the installed `.d.ts` for `@miden-sdk/miden-sdk` (`MidenClient`, `Account`, `AccountId`, `Note`, `Word`, etc.)
+
+Path layout differs across package managers (npm flat, pnpm nested, Yarn PnP virtual), so resolve them via your IDE's "Go to Definition" or the installed package surface rather than hard-coded paths.
 
 Common app-developer types:
 
