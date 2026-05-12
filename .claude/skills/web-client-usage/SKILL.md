@@ -449,6 +449,6 @@ while (true) {
    on the raw `WasmWebClient`, accessed via React's `useMidenClient()` or a
    direct `WasmWebClient` import; not on `MidenClient`) - the readers share
    the WASM client. Wrap concurrent flows with `client.waitForIdle()` or rely
-   on the React SDK's `runExclusive`. See `frontend-pitfalls` for the
-   cross-tab IndexedDB contention case that the `storeName` initialization
-   example above isolates against.
+   on the React SDK's `runExclusive`. For multiple browser clients or tabs,
+   give each isolated client a distinct `storeName`; see the initialization
+   examples above and `signer-integration` for per-user store isolation.
