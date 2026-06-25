@@ -1,11 +1,10 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
-// Stub fetch — `increment` fetches `/packages/increment_note.masp`. We never
-// reach Note construction in any test below (the path either short-circuits
-// on a missing wallet address or is short-circuited before `requestTransaction`
-// completes), but the fetch itself runs once and we don't want jsdom to error
-// out on an unhandled network request.
+// `increment` is gated on v0.15 (config `INCREMENT_ONCHAIN_BLOCKED`) and returns
+// before any fetch / SDK note construction / wallet call, so the artifact fetch
+// is never reached. We still stub fetch so an accidental call can't hit the
+// network under jsdom.
 const mockFetch = vi.fn(async () => ({
   arrayBuffer: async () => new ArrayBuffer(0),
 }));
@@ -49,17 +48,13 @@ vi.mock("@miden-sdk/miden-wallet-adapter-react", () => ({
   useMidenFiWallet: vi.fn(() => defaultWallet),
 }));
 
-// `useIncrementCounter` calls into many SDK constructors (Word/Felt/AccountId,
-// note builders, etc.) and chained builder methods like
-// `TransactionRequestBuilder().withOwnOutputNotes(...).build()`. We don't need
-// real values from these in unit tests — only that calls don't throw and the
-// hook can reach the poll loop. A Proxy-backed stub satisfies all chained
-// calls (`new X(...)`, `X.staticMethod(...)`, `instance.foo().bar(...)`) by
-// returning another callable+constructable stub for any property access.
-//
-// The one shape we DO need real data from is `Word.toU64s()` (the storage-map
-// value the hook reads to derive the count). The proxy intercepts that
-// specific access and returns a 4-tuple BigUint64Array-like value.
+// `loadCount` (the read path) calls into a handful of SDK constructors —
+// `AccountId.fromBech32`, `Word.newFromFelts`, `new Felt(...)` — and reads
+// `value.toU64s()` from the storage map. A Proxy-backed stub satisfies every
+// `new X(...)` / `X.static(...)` / `instance.foo().bar(...)` chain by returning
+// another callable+constructable stub; we intercept `toU64s` to return a real
+// 4-tuple so the count derivation works. The note-construction classes are
+// listed too but are never reached while the write path is gated.
 vi.mock("@miden-sdk/miden-sdk", async () => {
   const stub = (): object =>
     new Proxy(function noop() {}, {
@@ -105,8 +100,8 @@ import { useMiden, useMidenClient } from "@miden-sdk/react";
 import { useMidenFiWallet } from "@miden-sdk/miden-wallet-adapter-react";
 import { useIncrementCounter } from "../useIncrementCounter";
 import {
-  NETWORK_POLL_INTERVAL_MS,
-  NETWORK_POLL_TIMEOUT_MS,
+  INCREMENT_BLOCKED_MESSAGE,
+  INCREMENT_ONCHAIN_BLOCKED,
 } from "@/config";
 
 const COUNTER_ADDRESS = "mtst1aqmx7qv6h3y92sqsmunh8uht4ujmfy4j";
@@ -139,28 +134,18 @@ describe("useIncrementCounter", () => {
     vi.mocked(useMidenFiWallet).mockReturnValue(defaultWallet);
   });
 
-  it("surfaces an error when increment is called without a wallet address", async () => {
-    // Default stub has `address: null` (wallet not connected to an account).
-    // Make the mount-time loadCount succeed so its error path doesn't race
-    // with the one we're asserting against.
-    const fakeAccount = {
-      storage: () => ({ getMapItem: () => null }),
-    };
-    mockGetAccount.mockResolvedValue(fakeAccount as never);
+  it("loads the counter value from on-chain storage (read path)", async () => {
+    // Account present with a storage-map value → count derives from toU64s()[0].
+    mockGetAccount.mockResolvedValue({
+      storage: () => ({
+        getMapItem: () => ({ toU64s: () => [7n, 0n, 0n, 0n] }),
+      }),
+    } as never);
 
     const { result } = renderHook(() => useIncrementCounter(COUNTER_ADDRESS));
-    // Wait for mount-effect to finish (count resolves from null → 0).
-    await waitFor(() => expect(result.current.count).toBe(0));
 
-    await act(async () => {
-      await result.current.increment();
-    });
-
-    expect(result.current.error).toMatch(/no wallet account available/i);
-    expect(result.current.isSubmitting).toBe(false);
-    // requestTransaction must NOT have been called — we short-circuit before
-    // touching the wallet.
-    expect(defaultWallet.requestTransaction).not.toHaveBeenCalled();
+    await waitFor(() => expect(result.current.count).toBe(7));
+    expect(result.current.error).toBeNull();
   });
 
   it("surfaces an error when the counter account is unreachable on-chain", async () => {
@@ -175,9 +160,12 @@ describe("useIncrementCounter", () => {
     expect(result.current.count).toBeNull();
   });
 
-  it("does not call useMiden().sync() during a poll iteration", async () => {
-    // Wallet must be connected so increment doesn't short-circuit before the
-    // poll loop. Provide a real address + a working `requestTransaction`.
+  it("gates the on-chain write path on v0.15: exposes the reason, surfaces it on click, and never submits a transaction", async () => {
+    // Sanity: the migration intentionally disables the write path on v0.15.
+    expect(INCREMENT_ONCHAIN_BLOCKED).toBe(true);
+
+    // Connect a wallet so the ONLY thing stopping submission is the v0.15 gate
+    // (not the missing-wallet guard, which sits after it).
     const requestTransaction = vi.fn(async () => "0xtx");
     vi.mocked(useMidenFiWallet).mockReturnValue({
       ...defaultWallet,
@@ -185,71 +173,28 @@ describe("useIncrementCounter", () => {
       connected: true,
       requestTransaction,
     });
-
-    // Spy on the hook-level `sync()`. The fix this test guards against would
-    // call this inside the poll loop; production code now does not.
-    const sync = vi.fn(async () => undefined);
-    vi.mocked(useMiden).mockReturnValue({
-      client: null,
-      isReady: true,
-      isInitializing: false,
-      error: null,
-      sync,
-      runExclusive: <T,>(fn: () => Promise<T>) => fn(),
-      prover: null,
-      signerAccountId: null,
-      signerConnected: null,
-    });
-
-    // Storage-map value drives `count`. `Word.toU64s()` already resolves to
-    // [0n, 0n, 0n, 0n] via the SDK proxy stub above, so `loadCount()` always
-    // returns 0 → `previousCount === latest`. The loop will keep ticking
-    // until the deadline; we only need ONE iteration to elapse, then stop.
     mockGetAccount.mockResolvedValue({
-      storage: () => ({ getMapItem: () => ({ toU64s: () => [0n, 0n, 0n, 0n] }) }),
+      storage: () => ({
+        getMapItem: () => ({ toU64s: () => [0n, 0n, 0n, 0n] }),
+      }),
     } as never);
 
-    vi.useFakeTimers();
-    try {
-      const { result } = renderHook(() => useIncrementCounter(COUNTER_ADDRESS));
+    const { result } = renderHook(() => useIncrementCounter(COUNTER_ADDRESS));
+    await waitFor(() => expect(result.current.count).toBe(0));
 
-      // Wait for mount-effect's loadCount to settle.
-      await vi.waitFor(() => {
-        expect(result.current.count).toBe(0);
-      });
+    // The hook advertises the blocker so the UI can disable + explain.
+    expect(result.current.incrementBlockedReason).toBe(INCREMENT_BLOCKED_MESSAGE);
 
-      // Snapshot sync-call count before increment so we measure only what
-      // happens during the click + poll iteration.
-      expect(sync).not.toHaveBeenCalled();
+    await act(async () => {
+      await result.current.increment();
+    });
 
-      // Trigger increment without awaiting; the call schedules the poll loop.
-      let incrementPromise: Promise<void> | undefined;
-      await act(async () => {
-        incrementPromise = result.current.increment();
-        // Let microtasks settle for the requestTransaction await.
-        await Promise.resolve();
-      });
-
-      // Advance past one poll interval (2.5s) — exactly one iteration runs.
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(NETWORK_POLL_INTERVAL_MS + 50);
-      });
-
-      // The redundant `await sync()` was removed from the poll loop. After
-      // one iteration, `useMiden().sync` must not have been called.
-      expect(sync).not.toHaveBeenCalled();
-
-      // requestTransaction was reached — proves the loop actually ran.
-      expect(requestTransaction).toHaveBeenCalledTimes(1);
-
-      // Drain the rest of the deadline so the increment promise resolves
-      // cleanly and React unmount can finish.
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(NETWORK_POLL_TIMEOUT_MS);
-        await incrementPromise;
-      });
-    } finally {
-      vi.useRealTimers();
-    }
+    // The doomed, fee-bearing submission must NOT happen on v0.15: no wallet
+    // transaction, no artifact fetch, no poll spin-up — just the clear blocker.
+    expect(requestTransaction).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(result.current.error).toBe(INCREMENT_BLOCKED_MESSAGE);
+    expect(result.current.isSubmitting).toBe(false);
+    expect(result.current.isWaiting).toBe(false);
   });
 });

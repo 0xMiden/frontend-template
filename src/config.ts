@@ -31,6 +31,28 @@ export const NETWORK_POLL_INTERVAL_MS = 2_500;
 // ~3 block cycles at testnet's ~3s block time with margin.
 export const NETWORK_POLL_TIMEOUT_MS = 30_000;
 
+// ── On-chain increment: blocked on Miden SDK v0.15 ──────────────────────────
+// The increment note is a custom-script note that the network operator only
+// executes if it carries a `NetworkAccountTarget` attachment. v0.15 CAN build
+// that attachment — `NoteAttachment.fromWord(new NoteAttachmentScheme(2), word)`
+// (scheme id 2 = NetworkAccountTarget), or `createNoteAttachment(...)` from
+// `@miden-sdk/react`. What v0.15 lacks is any entry point to ATTACH a
+// `NoteAttachment` to a *custom-script* note: `NoteMetadata` no longer carries
+// attachments and the `Note` constructor takes none — only
+// `Note.createP2IDNote`/`createP2IDENote` accept one (and those force the P2ID
+// script, not the increment script). So the write path cannot be completed from
+// the web SDK yet. (The shipped `.masp` also needs a v0.15 / MAST `[0,0,3]`
+// rebuild and the counter a v0.15 redeploy.) The increment hook therefore
+// surfaces this and does NOT submit a doomed, fee-bearing transaction.
+//
+// To re-enable once 0xMiden/web-sdk ships a custom-note attachment API: set this
+// to `false`, restore the attachment line in `useIncrementCounter.ts`, rebuild
+// the artifacts, and redeploy a v0.15 counter. See README → Known Temporary
+// Workarounds.
+export const INCREMENT_ONCHAIN_BLOCKED: boolean = true;
+export const INCREMENT_BLOCKED_MESSAGE =
+  'On-chain increment is unavailable on Miden SDK v0.15: the web SDK can’t attach a network-execution target to a custom note yet (it also needs a v0.15-rebuilt .masp and a redeployed v0.15 counter). The counter read path still works — see the README’s “Known Temporary Workarounds”.';
+
 // Application display name (used by wallet adapter)
 export const APP_NAME = "Miden Template";
 

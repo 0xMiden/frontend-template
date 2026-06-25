@@ -9,7 +9,7 @@ yarn install
 yarn dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173). The app connects to Miden testnet out of the box and renders the current counter value. Install the [MidenFi wallet extension](https://chromewebstore.google.com/detail/midenfi), connect, and click the counter to submit an increment.
+Open [http://localhost:5173](http://localhost:5173). The app connects to Miden testnet out of the box and renders the current counter value. Install the [MidenFi wallet extension](https://chromewebstore.google.com/detail/midenfi) and connect to explore the wallet flow. **Note:** the on-chain increment is currently disabled on Miden SDK v0.15 — the increment button is disabled with an explanation (see [Network Counter Demo](#network-counter-demo)); the read path works.
 
 ## Project Structure
 
@@ -42,7 +42,7 @@ The template demonstrates the Miden network-note pattern on testnet:
 4. The frontend polls `client.getAccount(counterAddress)` and re-reads the `StorageMap`; once the value changes it updates the UI. If the network is slow, polling falls back to a 30 s timeout.
 
 > **⚠️ v0.15 status — the increment (write) path is blocked upstream.** The upgrade to SDK v0.15 changed the network-account model and the compiled-artifact format, so the on-chain increment does not currently complete end-to-end. The app still initializes the client, syncs, and **reads** the counter (the read path and the rest of the flow are migrated). Three independent blockers, each detailed under [Known Temporary Workarounds](#known-temporary-workarounds):
-> 1. **No web-SDK API attaches a network-execution target to a custom note.** v0.15 removed `NoteAttachment.newNetworkAccountTarget` and `NoteMetadata.withAttachment`; the standardized `NetworkAccountTarget` attachment scheme has no web-SDK builder for custom-script notes yet.
+> 1. **No web-SDK way to attach a network-execution target to a custom note.** v0.15 removed `NoteAttachment.newNetworkAccountTarget` and `NoteMetadata.withAttachment`. The `NetworkAccountTarget` attachment itself is still constructible (`NoteAttachment.fromWord(new NoteAttachmentScheme(2), …)`), but the web SDK exposes no way to **attach** a `NoteAttachment` to a *custom-script* note — `NoteMetadata` carries none and the `Note` constructor takes none; only `Note.createP2IDNote/createP2IDENote` accept one. The app therefore disables the increment button and explains why, instead of submitting a transaction that can't succeed.
 > 2. **The shipped `.masp` artifacts are incompatible.** They embed MAST forest version `[0,0,2]` (pre-v0.15); v0.15 rejects anything but `[0,0,3]` at `Package.deserialize`, so they must be rebuilt.
 > 3. **The account/deployment model changed.** `AccountStorageMode::Network` was removed; a v0.15 network account is a public account carrying an `AuthNetworkAccount` allowlist component (which the web SDK cannot yet create), so the live pre-v0.15 deployment likely won't function under v0.15.
 
@@ -104,7 +104,7 @@ Automated gates that must all stay green:
 
 ```bash
 npx tsc -b --noEmit       # type check
-npx vitest --run          # 36 unit tests (components, hook, patterns)
+npx vitest --run          # 37 unit tests (components, hook, patterns)
 npx vite build            # production build (emits dist/)
 npx eslint .              # lint
 ```
@@ -121,14 +121,14 @@ Two upstream gaps affect the demo on v0.15: a hard blocker on the on-chain incre
 
 ### v0.15: no web-SDK way to attach a network-execution target to a custom note (blocks the on-chain increment)
 
-The counter increment builds a **custom-script** note that must carry a *network-account-target* attachment so the network operator executes it against the counter. v0.15 removed both JS APIs the previous flow used — `NoteAttachment.newNetworkAccountTarget(...)` and `NoteMetadata.withAttachment(...)`. In v0.15, network targeting is the standardized `NetworkAccountTarget` attachment scheme (id 2), but `@miden-sdk/miden-sdk@0.15.2` exposes **no way to attach a scheme to a custom-script note**: `NoteMetadata` no longer carries attachments, only `Note.createP2IDNote/createP2IDENote` accept a `NoteAttachment`, and there is no JS `NetworkAccountTarget` builder. `src/hooks/useIncrementCounter.ts` therefore constructs the note in the correct v0.15 shape **without** the attachment (see the inline `v0.15 UPSTREAM BLOCKER` comment); the note can be submitted but the operator cannot pick it up, so the on-chain count will not change until the web SDK adds a custom-note attachment entry point (track: [`0xMiden/web-sdk`](https://github.com/0xMiden/web-sdk)).
+The counter increment builds a **custom-script** note that must carry a *network-account-target* attachment so the network operator executes it against the counter. v0.15 removed both JS APIs the previous flow used — `NoteAttachment.newNetworkAccountTarget(...)` and `NoteMetadata.withAttachment(...)`. In v0.15 the attachment itself is still constructible (`NoteAttachment.fromWord(new NoteAttachmentScheme(2), …)`, scheme id 2 = `NetworkAccountTarget`, or `createNoteAttachment(...)`), but `@miden-sdk/miden-sdk@0.15.2` exposes **no entry point to attach a `NoteAttachment` to a custom-script note**: `NoteMetadata` no longer carries attachments and the `Note` constructor takes none — only `Note.createP2IDNote/createP2IDENote` accept one (and those force the P2ID script, not the increment script). Because the on-chain increment therefore cannot succeed, `src/hooks/useIncrementCounter.ts` gates it behind `INCREMENT_ONCHAIN_BLOCKED` (in `src/config.ts`): the button is disabled with an explanation and **no transaction is submitted** (avoiding a fee-bearing, orphan-note tx the operator can never consume). The note-construction path is kept behind the flag, ready to re-enable once the web SDK adds a custom-note attachment entry point (track: [`0xMiden/web-sdk`](https://github.com/0xMiden/web-sdk)).
 
 Two related prerequisites must also be resolved for the demo to work end-to-end on v0.15:
 
 - **Rebuild the `.masp` artifacts.** The shipped artifacts embed MAST version `[0,0,2]` and are rejected by v0.15's `Package.deserialize` (which requires `[0,0,3]`). Rebuild with a `cargo-miden` toolchain pinned to `miden-core`/`miden-mast-package` 0.23.x (see "Pointing at your own counter").
 - **Redeploy a v0.15 network account.** `AccountStorageMode::Network` was removed; a v0.15 network account is a public account carrying an `AuthNetworkAccount` note-script allowlist component. The live pre-v0.15 deployment will not behave as a network account under v0.15.
 
-**To re-enable the increment** once the web SDK lands the attachment API: restore the network-target attachment on the note in `useIncrementCounter.ts::increment`, rebuild + redeploy the artifacts/account, and update `VITE_MIDEN_COUNTER_ADDRESS`.
+**To re-enable the increment** once the web SDK lands the attachment API: set `INCREMENT_ONCHAIN_BLOCKED = false` in `src/config.ts`, restore the network-target attachment on the note in `useIncrementCounter.ts::increment`, rebuild + redeploy the artifacts/account, and update `VITE_MIDEN_COUNTER_ADDRESS`.
 
 ### Fixed-interval network poll — waiting for network-operator account updates ([miden-client#2111](https://github.com/0xMiden/miden-client/issues/2111))
 

@@ -28,6 +28,8 @@ import { randomWord } from "@/lib/miden";
 import {
   COUNTER_SLOT_NAME,
   EXPLORER_BASE_URL,
+  INCREMENT_BLOCKED_MESSAGE,
+  INCREMENT_ONCHAIN_BLOCKED,
   NETWORK_POLL_INTERVAL_MS,
   NETWORK_POLL_TIMEOUT_MS,
 } from "@/config";
@@ -93,6 +95,15 @@ export function useIncrementCounter(counterAddress: string) {
   }, [loadCount]);
 
   const increment = useCallback(async () => {
+    // On-chain increment is blocked on Miden SDK v0.15 (see INCREMENT_ONCHAIN_BLOCKED
+    // in src/config.ts for the full rationale). Surface the blocker and return early —
+    // do NOT fetch/deserialize the artifact or submit a fee-bearing wallet transaction
+    // that the network operator can never execute. Everything below is the correct
+    // v0.15 construction path, kept behind this flag for a one-line re-enable.
+    if (INCREMENT_ONCHAIN_BLOCKED) {
+      setError(INCREMENT_BLOCKED_MESSAGE);
+      return;
+    }
     if (!walletAddress) {
       setError(
         "No wallet account available. Connect MidenFi to a testnet account before incrementing.",
@@ -117,24 +128,11 @@ export function useIncrementCounter(counterAddress: string) {
 
       const tag = NoteTag.withAccountTarget(counterAccountId);
 
-      // ─── v0.15 UPSTREAM BLOCKER: network-account note attachment ───────────
-      // Previously this note carried a network-account-target attachment so the
-      // network operator would auto-execute it against the counter:
-      //   NoteAttachment.newNetworkAccountTarget(counterAccountId, hint)
-      //   new NoteMetadata(sender, NoteType.Public, tag).withAttachment(att)
-      // v0.15 removed BOTH of those JS APIs. Network targeting is now the
-      // standardized attachment scheme `NetworkAccountTarget` (scheme id 2; see
-      // miden-base crates/miden-standards/src/note/network_account_target.rs),
-      // but @miden-sdk/miden-sdk 0.15.2 exposes NO way to attach a scheme to a
-      // custom-script note: `NoteMetadata` lost `.withAttachment()`, only
-      // `Note.createP2IDNote/createP2IDENote` accept a `NoteAttachment`, and
-      // there is no JS `NetworkAccountTarget` builder. Until the web SDK adds a
-      // custom-note attachment entry point (track: 0xMiden/web-sdk), the operator
-      // cannot pick up this note and the on-chain counter will not update.
-      // The note below is built in the correct v0.15 shape so the surrounding
-      // flow (wallet submission + polling) stays migration-complete and ready to
-      // re-enable the attachment line once upstream lands. See README §"Known
-      // Temporary Workarounds" for the full rationale and removal steps.
+      // v0.15 `NoteMetadata` carries no attachment. The previous line that made this
+      // a network note — `.withAttachment(NoteAttachment.newNetworkAccountTarget(...))`
+      // — has no v0.15 equivalent for a custom-script note (full rationale in
+      // src/config.ts `INCREMENT_ONCHAIN_BLOCKED`). This is the line to restore
+      // when the web SDK ships a custom-note attachment entry point.
       const metadata = new NoteMetadata(walletAccountId, NoteType.Public, tag);
 
       const note = new Note(new NoteAssets(), metadata, recipient);
@@ -194,6 +192,10 @@ export function useIncrementCounter(counterAddress: string) {
 
   return {
     increment,
+    // Non-null when the on-chain write path is blocked (currently v0.15). The UI
+    // uses this to disable the button and explain why, rather than letting the
+    // user click into a guaranteed-failing, fee-bearing transaction.
+    incrementBlockedReason: INCREMENT_ONCHAIN_BLOCKED ? INCREMENT_BLOCKED_MESSAGE : null,
     count,
     isSubmitting,
     isWaiting,
