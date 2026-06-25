@@ -86,7 +86,7 @@ A transaction is a **single-account state transition** with 4 phases:
 | `NoAuth` | No authentication (for testing) |
 | `AuthSingleSig` | Production signature authentication — unified auth component covering both Falcon-512 and ECDSA-K256 key types |
 
-**v14 note**: `AuthSingleSig` unifies what were previously per-scheme auth components (one for Falcon-512, one for ECDSA-K256) into a single component that dispatches on the key type ([miden-client#1798](https://github.com/0xMiden/miden-client/pull/1798)). In the same release the underlying Falcon-512 signature scheme adopted Poseidon2 as its hash function, and is now named `Falcon512Poseidon2`. If you see the older per-scheme component names or the old signature-scheme name in examples or docs, the source predates 0.14 and needs updating.
+**v14 note**: `AuthSingleSig` unifies what were previously per-scheme auth components (one for Falcon-512, one for ECDSA-K256) into a single component that dispatches on the key type ([miden-client#1798](https://github.com/0xMiden/miden-client/pull/1798)). In the same release the underlying Falcon-512 signature scheme adopted Poseidon2 as its hash function, and is now named `Falcon512Poseidon2`. If you see the older per-scheme component names or the old signature-scheme name in examples or docs, the source predates these auth changes and needs updating.
 
 ## Development Model
 

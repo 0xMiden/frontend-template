@@ -153,20 +153,6 @@ export const useImportAccount = vi.fn(() => ({
   reset: vi.fn(),
 }));
 
-export const useInternalTransfer = vi.fn(() => ({
-  transfer: vi.fn(async () => ({
-    createTransactionId: "0xtx1",
-    consumeTransactionId: "0xtx2",
-    noteId: "0xnote1",
-  })),
-  transferChain: vi.fn(async () => []),
-  result: null,
-  isLoading: false,
-  stage: "idle" as const,
-  error: null,
-  reset: vi.fn(),
-}));
-
 export const useWaitForCommit = vi.fn(() => ({
   waitForCommit: vi.fn(async () => undefined),
 }));

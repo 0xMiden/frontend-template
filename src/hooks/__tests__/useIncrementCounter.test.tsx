@@ -84,8 +84,6 @@ vi.mock("@miden-sdk/miden-sdk", async () => {
     "NoteStorage",
     "NoteTag",
     "NoteType",
-    "NoteAttachment",
-    "NoteExecutionHint",
     "NoteArray",
     "AccountId",
     "Felt",

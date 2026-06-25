@@ -59,7 +59,7 @@ import { MidenFiSignerProvider } from "@miden-sdk/miden-wallet-adapter-react";
 ### Query Hooks
 Each returns its own result shape plus `isLoading`, `error`, `refetch`:
 ```tsx
-const { wallets, faucets } = useAccounts();
+const { accounts } = useAccounts();           // wallets is @deprecated (mirrors accounts); faucets is @deprecated and always empty in v0.15 — detect faucets per-account from components
 const { account, assets, getBalance } = useAccount(accountId);
 const { notes, consumableNotes } = useNotes();
 const { syncHeight, sync } = useSyncState();
@@ -169,15 +169,21 @@ cargo miden build --release
 ```bash
 .claude/hooks/check-artifacts.sh
 ```
+Note: this hook only checks that `.masp` files are present and non-trivial in size — it does **not** validate the MASP/MAST format version, so it will not catch a pre-v0.15 ↔ v0.15 mismatch.
+
+### v0.15 compatibility
+The `.masp` files shipped in `public/packages/` are pre-v0.15 builds: they embed MAST forest version `[0,0,2]`, which v0.15's `Package.deserialize` rejects (it requires `[0,0,3]`). They must be rebuilt with a `cargo-miden` toolchain whose `miden-core`/`miden-mast-package` are 0.23.x. Older MAST artifacts do not round-trip to v0.15.
 
 ### Failure recovery
 - **Missing artifacts**: Build contracts with `cargo miden build` or ask the PM to supply the `.masp` files
 - **Stale artifacts**: Rebuild and re-copy after contract changes
-- **Deserialization failure at runtime**: Version mismatch — rebuild contracts with the SDK version matching `@miden-sdk/miden-sdk` in `package.json`
+- **Deserialization failure at runtime**: Version mismatch — rebuild contracts with a `cargo-miden` toolchain matching the `@miden-sdk/miden-sdk` version in `package.json` (for v0.15, one that emits MAST version `[0,0,3]`)
 
 ## Known Temporary Workarounds
 
-One remaining upstream feature gap. The README has full rationale + removal steps; summary below.
+Two upstream gaps. The README has full rationale + removal steps; summary below.
+
+**v0.15 network-attachment blocker (blocks the on-chain increment)**: v0.15 removed `NoteAttachment.newNetworkAccountTarget` and `NoteMetadata.withAttachment`, and the web SDK exposes no way to attach the standardized `NetworkAccountTarget` scheme to a custom-script note. So `useIncrementCounter.ts::increment` builds the note in the correct v0.15 shape **without** the network-target attachment (see the inline `v0.15 UPSTREAM BLOCKER` comment), and the on-chain count won't change until the web SDK ([0xMiden/web-sdk](https://github.com/0xMiden/web-sdk)) adds a custom-note attachment API. The demo also needs rebuilt `.masp` artifacts (MAST `[0,0,3]`) and a redeployed v0.15 network account (a public account with an `AuthNetworkAccount` allowlist component — `AccountStorageMode::Network` was removed).
 
 **Fixed-interval network poll** ([0xMiden/miden-client#2111](https://github.com/0xMiden/miden-client/issues/2111)): `useIncrementCounter.ts::increment` polls the counter's storage map every `NETWORK_POLL_INTERVAL_MS` (2.5 s) until the value changes or `NETWORK_POLL_TIMEOUT_MS` (30 s) elapses. `useWaitForCommit` doesn't apply because the increment is wallet-submitted and consumed externally by the network operator — the local client never sees the tx. #2111 tracks a React-SDK subscription primitive for this case (narrowed from the broader event-system discussion in #467).
 
@@ -236,7 +242,7 @@ git clone https://github.com/vercel-labs/agent-skills.git
 
 For complex applications beyond basic hook usage (custom signers, direct WasmWebClient access, advanced note flows):
 
-1. Clone `miden-client` repo alongside this project (see `frontend-source-guide` skill)
+1. Clone the `0xMiden/web-sdk` repo alongside this project — it holds the React SDK source (`packages/react-sdk/`), web-client (`crates/web-client/`), and the idxdb store (`crates/idxdb-store/`). (miden-client was renamed to `0xMiden/rust-sdk`, the Rust client only.) See the `frontend-source-guide` skill.
 2. Use Plan Mode first — Claude explores React SDK source + examples before coding
 3. Claude uses sub-agents to explore repos efficiently without filling main context
 

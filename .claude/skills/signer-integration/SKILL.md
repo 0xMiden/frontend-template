@@ -59,7 +59,9 @@ Connect via passkey:
 import { useSigner } from "@miden-sdk/react";
 import { useTurnkeySigner } from "@miden-sdk/miden-turnkey-react";
 
-const { isConnected, connect, disconnect } = useSigner();
+const signer = useSigner();
+if (!signer) return null;
+const { isConnected, connect, disconnect } = signer;
 await connect();  // triggers passkey flow, auto-selects account
 
 // Turnkey-specific extras
@@ -76,7 +78,7 @@ import { WalletAdapterNetwork } from "@miden-sdk/miden-wallet-adapter-base";
   network={WalletAdapterNetwork.Testnet}                  // WalletAdapterNetwork enum: Devnet | Testnet | Localnet
   autoConnect                                             // reconnect on mount. Default: false
   accountType="RegularAccountImmutableCode"               // Default: "RegularAccountImmutableCode"
-  storageMode="public"                                    // "private" | "public" | "network". Default: "public"
+  storageMode="public"                                    // "private" | "public". Default: "public"
   customComponents={[myComponent]}                        // optional: custom AccountComponents
   privateDataPermission={permission}                      // optional: private data access level
   allowedPrivateData={allowedData}                        // optional: allowed private data types
@@ -94,7 +96,7 @@ With `MidenFiSignerProvider` in place, use `useSigner()` from the React SDK to m
 This template deviates from the generic `useSigner()` approach in two places — worth knowing because it's a pattern you'll likely want when the wallet extension is the primary signer:
 
 - **Wallet button uses `useMidenFiWallet()` + `WalletReadyState`** (`src/components/AppContent.tsx`). The button gates on `wallet.readyState` so it can render a disabled "Install MidenFi Wallet" state before the extension is detected. `useSigner().connect()` would silently fall through to the adapter's `window.open(adapter.url, ...)` install fallback (Chrome Web Store → Play Store redirect on some platforms); gating on `readyState` avoids that path entirely.
-- **Custom transaction flow calls `wallet.requestTransaction(...)` directly** (`src/hooks/useIncrementCounter.ts`). The counter increment builds a bespoke `TransactionRequest` (via `TransactionRequestBuilder`, a custom `Note` with `NoteAttachment.newNetworkAccountTarget`, etc.) and hands it to the wallet for signing + submission. The React SDK mutation hooks (`useSend`, `useConsume`, ...) don't cover this kind of custom note construction, and the tx is submitted by the wallet rather than the local client — so `useWaitForCommit` doesn't apply either.
+- **Custom transaction flow calls `wallet.requestTransaction(...)` directly** (`src/hooks/useIncrementCounter.ts`). The counter increment builds a bespoke `TransactionRequest` (via `TransactionRequestBuilder` and a custom `Note`) and hands it to the wallet for signing + submission. (In v0.15 the note can no longer carry a network-execution target — `NoteAttachment.newNetworkAccountTarget` and `NoteMetadata.withAttachment` were removed; see the `useIncrementCounter.ts` blocker note.) The React SDK mutation hooks (`useSend`, `useConsume`, ...) don't cover this kind of custom note construction, and the tx is submitted by the wallet rather than the local client — so `useWaitForCommit` doesn't apply either.
 
 ## Unified Signer Interface
 
@@ -102,7 +104,9 @@ Works with any signer provider above:
 ```tsx
 import { useSigner } from "@miden-sdk/react";
 
-const { isConnected, connect, disconnect, name } = useSigner();
+const signer = useSigner();
+if (!signer) return null;
+const { isConnected, connect, disconnect, name } = signer;
 
 if (!isConnected) {
   return <button onClick={connect}>Connect {name}</button>;
@@ -115,14 +119,15 @@ Implement `SignerContextValue` via `SignerContext.Provider`:
 
 ```tsx
 import { SignerContext } from "@miden-sdk/react";
+import { AccountStorageMode } from "@miden-sdk/miden-sdk";
 
 <SignerContext.Provider value={{
   name: "MyWallet",
   storeName: `mywallet_${userAddress}`,  // unique per user for DB isolation
   isConnected: true,
   accountConfig: {
-    publicKey: userPublicKeyCommitment,  // Uint8Array
-    storageMode: "private",
+    publicKeyCommitment: userPublicKeyCommitment,  // Uint8Array
+    storageMode: AccountStorageMode.private(),
   },
   signCb: async (pubKey, signingInputs) => {
     // Route to your signing service

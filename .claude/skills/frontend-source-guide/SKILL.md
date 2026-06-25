@@ -1,6 +1,6 @@
 ---
 name: frontend-source-guide
-description: Guide for advanced Miden frontend development using source repo exploration. Covers AI development practices (Plan Mode, verification-driven development, context engineering, sub-agents) and maps the miden-client source repository for discovering advanced patterns. Use when building complex applications beyond basic hook usage, implementing custom signers, working with WasmWebClient directly, or troubleshooting SDK internals.
+description: Guide for advanced Miden frontend development using source repo exploration. Covers AI development practices (Plan Mode, verification-driven development, context engineering, sub-agents) and maps the 0xMiden/web-sdk source repository (the browser SDK split out of miden-client) for discovering advanced patterns. Use when building complex applications beyond basic hook usage, implementing custom signers, working with WasmWebClient directly, or troubleshooting SDK internals.
 ---
 
 # Advanced Miden Frontend Development: Source-Guided Context Engineering
@@ -37,7 +37,7 @@ Never submit code that doesn't type-check. The verification loop is your quality
 
 ### 3. Context Engineering with Source Repos
 
-The basic skills (react-sdk-patterns, frontend-pitfalls, vite-wasm-setup) cover standard patterns. For anything beyond those patterns, the miden-client source repository is the knowledge base.
+The basic skills (react-sdk-patterns, frontend-pitfalls, vite-wasm-setup) cover standard patterns. For anything beyond those patterns, the [`0xMiden/web-sdk`](https://github.com/0xMiden/web-sdk) source repository is the knowledge base.
 
 **How to use source repos effectively**:
 - Don't load entire repos into context. Use sub-agents to explore — they search, read relevant files, and summarize findings without filling the main conversation context.
@@ -69,9 +69,11 @@ When stuck at any stage: search the React SDK source for a similar working patte
 
 Clone this repo alongside your project for reference. Claude will explore it when needed for advanced patterns.
 
+> **v0.15 repo split:** the browser SDK (`@miden-sdk/miden-sdk`, `@miden-sdk/react`, `@miden-sdk/vite-plugin`, and the IndexedDB store) moved out of `miden-client` into the dedicated [`0xMiden/web-sdk`](https://github.com/0xMiden/web-sdk) repo. `miden-client` itself was renamed to [`0xMiden/rust-sdk`](https://github.com/0xMiden/rust-sdk) and now holds only the Rust client (`crates/rust-client`). The MidenFi / Para / Turnkey wallet adapters live in a separate repo, [`0xMiden/wallet-adapter`](https://github.com/0xMiden/wallet-adapter). Clone `web-sdk` for all of the paths below.
+
 ```bash
 # Contains React SDK source, WasmWebClient WASM bindings, and working examples
-git clone --depth 1 https://github.com/0xMiden/miden-client.git ../miden-client
+git clone --depth 1 https://github.com/0xMiden/web-sdk.git ../web-sdk
 ```
 
 ### `packages/react-sdk/` — React SDK Source
