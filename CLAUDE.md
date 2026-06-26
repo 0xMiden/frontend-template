@@ -40,21 +40,21 @@ Only use the WASM client directly via `useMidenClient()` for operations not cove
 import { MidenProvider } from "@miden-sdk/react";
 import { MidenFiSignerProvider } from "@miden-sdk/miden-wallet-adapter-react";
 
-<MidenFiSignerProvider
-  appName={APP_NAME}
-  network={WalletAdapterNetwork.Testnet}
-  autoConnect
+<MidenProvider
+  config={{ rpcUrl: MIDEN_RPC_URL, prover: MIDEN_PROVER }}
+  loadingComponent={<div className="loading">Loading Miden WASM...</div>}
 >
-  <MidenProvider
-    config={{ rpcUrl: MIDEN_RPC_URL, prover: MIDEN_PROVER }}
-    loadingComponent={<div className="loading">Loading Miden WASM...</div>}
+  <MidenFiSignerProvider
+    appName={APP_NAME}
+    network={WalletAdapterNetwork.Testnet}
+    autoConnect
   >
     <App />
-  </MidenProvider>
-</MidenFiSignerProvider>
+  </MidenFiSignerProvider>
+</MidenProvider>
 ```
 
-> `MidenFiSignerProvider` must wrap `MidenProvider`. `MidenProvider` reads from `SignerContext` during initialization (to wire its external-keystore client), so the signer context has to exist before `MidenProvider` mounts.
+> **v0.15 provider order — `MidenProvider` runs OUTSIDE the signer provider.** When a signer provider (`MidenFiSignerProvider`) is an *ancestor* of `MidenProvider`, v0.15 `MidenProvider` treats it as its external keystore and does **not** create the client until the wallet connects (it sees `signerContext.isConnected === false` and returns early). With no wallet connected — before the user connects, or in any environment without the MidenFi extension — the app then hangs forever on "Initializing Miden client…". This template never signs *through* `MidenProvider` (the only write, the increment, is submitted by the wallet adapter's `requestTransaction`), so `MidenProvider` runs in local-keystore mode (no signer above it → it initializes immediately and the public counter read works without a connected wallet), with `MidenFiSignerProvider` *inside* it purely for the connect button + `requestTransaction`. If instead you DO want `MidenProvider` to sign via the wallet, put the signer provider above it — but then gate your UI on `useMiden().isReady` / signer connection (show a "connect" screen), don't expect the client before the wallet connects. (This init-gating behavior is undocumented in the migration guide; verified against `web-sdk` `packages/react-sdk/src/context/MidenProvider.tsx`.)
 
 ### Query Hooks
 Each returns its own result shape plus `isLoading`, `error`, `refetch`:

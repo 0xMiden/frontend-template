@@ -7,9 +7,8 @@ description: Guide to integrating external signers (Para, Turnkey, MidenFi walle
 
 ## Overview
 
-By default, MidenProvider uses a **local keystore** (keys in IndexedDB, no wallet connection needed). For production apps, wrap MidenProvider with a signer provider to use external key management.
+By default, MidenProvider uses a **local keystore** (keys in IndexedDB, no wallet connection needed). To have MidenProvider **sign through an external wallet/keystore**, wrap MidenProvider with a signer provider:
 
-Signer providers must wrap MidenProvider (outer → inner):
 ```
 <SignerProvider>      ← manages keys + auth
   <MidenProvider>     ← manages Miden client
@@ -17,6 +16,11 @@ Signer providers must wrap MidenProvider (outer → inner):
   </MidenProvider>
 </SignerProvider>
 ```
+
+> **v0.15 init-gating caveat (verified against `web-sdk` `MidenProvider.tsx`).** When a signer provider is an ancestor of `MidenProvider`, v0.15 `MidenProvider` does **not** create the client until the signer connects — while `signerContext.isConnected === false` it returns early without a `WebClient`, so `isReady` stays `false`. Practical consequences:
+> - **Gate your UI on connection**, not just `isReady` — show a "connect wallet / choose local" screen while disconnected (see the web-sdk example app's `SignerSelector`), or the app will sit on "Initializing…" forever before the wallet connects (and in any environment without the extension).
+> - **If you need the client ready before a wallet connects** (e.g. to read *public* data, or the wallet only *submits* txs via the wallet adapter's `requestTransaction` rather than signing through `MidenProvider`), run `MidenProvider` in **local-keystore mode** — keep it OUTSIDE the signer provider (no signer above it) — and keep the wallet provider inside, used only for connect + `requestTransaction`. That's what this template does (`src/providers.tsx`).
+> - The multi-signer pattern (`MultiSignerProvider` + `SignerSlot`, with `MidenProvider` as a sibling) has the same connect-first requirement.
 
 ## Pre-Built Signer Providers
 
