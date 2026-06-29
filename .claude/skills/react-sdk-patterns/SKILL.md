@@ -373,7 +373,7 @@ await runExclusive(async () => {
   await client.syncState();
   const account = await client.getAccount(id);
   if (!account) return;
-  // AccountStorage (miden_client_web.d.ts:639-660):
+  // AccountStorage (miden_client_web.d.ts):
   const value = account.storage().getItem("my_slot_name");
   // For storage maps:
   const mapValue = account.storage().getMapItem("my_map_slot", keyWord);
@@ -382,7 +382,7 @@ await runExclusive(async () => {
 
 `Account.storage()` returns an `AccountStorage`. Both `getItem(slot_name: string)` and `getMapItem(slot_name: string, key: Word)` return `Word | undefined`. Use slot-name strings (e.g. `COUNTER_SLOT_NAME` in `src/config.ts`), not numeric indices. See `src/hooks/useIncrementCounter.ts:73-83` for the live in-template `getMapItem` example.
 
-`useMidenClient()` returns the raw `WasmWebClient`. Its direct methods include `getAccount(accountId)`, `getAccountStorage(accountId)`, `importAccountById(accountId)`, `syncState()`, and the transaction-request factories (`newSendTransactionRequest`, `newConsumeTransactionRequest`, `newMintTransactionRequest`, `newSwapTransactionRequest`). For compile-from-source, call `await client.createCodeBuilder()` (returns `Promise<CodeBuilder>`) and use the resolved `CodeBuilder`'s `compileNoteScript(program: string)` / `compileTxScript(tx_script: string)` (`miden_client_web.d.ts`:1058-1115, factory at :4237). The higher-level `MidenClient.accounts.getOrImport` resource API lives on the standalone `MidenClient` (see `web-client-usage`).
+`useMidenClient()` returns the raw `WasmWebClient`. Its direct methods include `getAccount(accountId)`, `getAccountStorage(accountId)`, `importAccountById(accountId)`, `syncState()`, and the transaction-request factories (`newSendTransactionRequest`, `newConsumeTransactionRequest`, `newMintTransactionRequest`, `newSwapTransactionRequest`). For compile-from-source, call `await client.createCodeBuilder()` (returns `Promise<CodeBuilder>`) and use the resolved `CodeBuilder`'s `compileNoteScript(program: string)` / `compileTxScript(tx_script: string)` (see `CodeBuilder` / `createCodeBuilder()` in `miden_client_web.d.ts`). The higher-level `MidenClient.accounts.getOrImport` resource API lives on the standalone `MidenClient` (see `web-client-usage`).
 
 ## Account Import then Sync then Read Storage Flow
 
@@ -461,17 +461,19 @@ async function submitMultiNoteTx(
 
   // (c) Asset transfers: each note carries fungible assets that move to the
   // recipient when the note is consumed. FungibleAsset is declared at
-  // miden_client_web.d.ts:1474 (constructor `(faucet_id, amount: bigint)` at :1492).
+  // FungibleAsset in miden_client_web.d.ts (constructor `(faucet_id, amount: bigint)`).
   const assets1 = new NoteAssets([new FungibleAsset(faucet, 1000n)]);
   const assets2 = new NoteAssets([new FungibleAsset(faucet, 500n)]);
 
   const tag = NoteTag.withAccountTarget(target);
   // v0.15: NoteMetadata carries no attachment. `NoteAttachment.newNetworkAccountTarget`
-  // and `NoteMetadata.withAttachment` were removed. Attachments now only attach via the
-  // built-in P2ID/P2IDE builders (`Note.createP2IDNote/createP2IDENote`), and there is no
-  // web-SDK builder for the standards-level `NetworkAccountTarget` scheme (id 2). Custom
-  // notes like these therefore cannot carry a network-execution target from JS yet —
-  // see the `useIncrementCounter.ts` blocker note and README "Known Temporary Workarounds".
+  // and `NoteMetadata.withAttachment` were removed. The NetworkAccountTarget attachment
+  // itself IS still constructible (`NoteAttachment.fromWord(new NoteAttachmentScheme(2),
+  // word)`, scheme id 2, or `createNoteAttachment`), but v0.15 exposes no entry point to
+  // attach a `NoteAttachment` to a custom-script note: `NoteMetadata` carries none and the
+  // `Note` constructor takes none; only `Note.createP2IDNote/createP2IDENote` accept one.
+  // So custom notes like these cannot carry a network-execution target from JS yet. See the
+  // `useIncrementCounter.ts` blocker note and README "Known Temporary Workarounds".
   const metadata = new NoteMetadata(sender, NoteType.Public, tag);
 
   // Two output notes with different felt inputs and asset amounts.
@@ -481,7 +483,7 @@ async function submitMultiNoteTx(
   // (d) Multi-output transaction: emit both notes in one transaction.
   // For transactions that consume multiple input notes simultaneously,
   // TransactionRequestBuilder.withInputNotes(NoteAndArgsArray) is the
-  // counterpart (miden_client_web.d.ts:3963).
+  // counterpart (miden_client_web.d.ts).
   const txRequest = new TransactionRequestBuilder()
     .withOwnOutputNotes(new NoteArray([note1, note2]))
     .build();
@@ -507,8 +509,8 @@ const noteScript = builder.compileNoteScript(noteSourceMasm);
 const txScript = builder.compileTxScript(txSourceMasm);
 ```
 
-  See `miden_client_web.d.ts`:1058-1115 for `CodeBuilder` and :4237 for `createCodeBuilder()`. As the React-idiomatic alternative, `useCompile()` (`@miden-sdk/react/dist/index.d.ts`:1171-1196) wraps `CompilerResource` from the standalone `MidenClient` and exposes `noteScript`, `txScript`, `component`, `isReady` at the hook layer.
-- **Inside `useTransaction`'s `request` callback** the parameter is a `WasmWebClient` (`@miden-sdk/react/dist/index.d.ts`:393). Use `await client.createCodeBuilder()` for compile, then build the `TransactionRequest` with `TransactionRequestBuilder` and return it. For the higher-level `MidenClient.compile.*` and `MidenClient.transactions.execute` resource API on a standalone `MidenClient`, see `web-client-usage`.
+  See `CodeBuilder` and `createCodeBuilder()` in `miden_client_web.d.ts`. As the React-idiomatic alternative, `useCompile()` (`@miden-sdk/react/dist/index.d.ts`) wraps `CompilerResource` from the standalone `MidenClient` and exposes `noteScript`, `txScript`, `component`, `isReady` at the hook layer.
+- **Inside `useTransaction`'s `request` callback** the parameter is a `WasmWebClient` (`@miden-sdk/react/dist/index.d.ts`). Use `await client.createCodeBuilder()` for compile, then build the `TransactionRequest` with `TransactionRequestBuilder` and return it. For the higher-level `MidenClient.compile.*` and `MidenClient.transactions.execute` resource API on a standalone `MidenClient`, see `web-client-usage`.
 
 ## Cross-SDK Type Reference
 
@@ -527,10 +529,10 @@ Common app-developer types:
 | `AccountId` | `@miden-sdk/miden-sdk` | construct via `AccountId.fromHex(hex)`; throws on invalid hex |
 | `Address` | `@miden-sdk/miden-sdk` | bech32 wrapper; `Address.fromBech32(...)` |
 | `Note`, `InputNoteRecord`, `ConsumableNoteRecord` | `@miden-sdk/react` | re-exported from `@miden-sdk/miden-sdk`. Input notes are received; for output-note types and private-note flows see `web-client-usage`. |
-| `NoteVisibility` (constants + string-union) | `@miden-sdk/miden-sdk` | `const NoteVisibility = { Public: 'public', Private: 'private' }` plus `type NoteVisibility = 'public' \| 'private'` (`api-types.d.ts`:95-101). NOT an enum. Coexists with the raw WASM `NoteType` enum (`miden_client_web.d.ts`:2889) which the template uses directly when building notes via the WASM types (see `src/hooks/useIncrementCounter.ts`). |
+| `NoteVisibility` (constants + string-union) | `@miden-sdk/miden-sdk` | `const NoteVisibility = { Public: 'public', Private: 'private' }` plus `type NoteVisibility = 'public' \| 'private'` (`api-types.d.ts`). NOT an enum. Coexists with the raw WASM `NoteType` enum (`miden_client_web.d.ts`) which the template uses directly when building notes via the WASM types (see `src/hooks/useIncrementCounter.ts`). |
 | `AccountType`, `AuthScheme`, `StorageMode` | `@miden-sdk/miden-sdk` | enums; see `web-client-usage` "Visibility & Account Types". |
 | `TransactionRequest` | `@miden-sdk/react` | client factory functions return this |
-| `Word` | `@miden-sdk/miden-sdk` | 32-byte (4 felts) value; `Word.toU64s()` returns `BigUint64Array` of length 4 (each lane is a `bigint` after subscript). See `miden_client_web.d.ts`:4535. |
+| `Word` | `@miden-sdk/miden-sdk` | 32-byte (4 felts) value; `Word.toU64s()` returns `BigUint64Array` of length 4 (each lane is a `bigint` after subscript). See `Word.toU64s` in `miden_client_web.d.ts`. |
 
 Do not hardcode this table for long-term reference. The `.d.ts` files stay in lockstep with the installed package version; this list will drift.
 
@@ -551,8 +553,8 @@ The Rust (`miden-client`) and TypeScript (`@miden-sdk/miden-sdk`) SDKs share con
 
 Common gotchas:
 
-- The TS method is `FeltArray.push(element: Felt)` (`miden_client_web.d.ts`:1324); there is no `FeltArray.append`. To convert a `Felt` to a JS `bigint`, use `Felt.asInt()` (`miden_client_web.d.ts`:1296). When a Rust method appears missing in TS, consult `node_modules/@miden-sdk/miden-sdk/dist/index.d.ts` and `dist/crates/miden_client_web.d.ts` first instead of guessing the TS spelling.
+- The TS method is `FeltArray.push(element: Felt)` (`miden_client_web.d.ts`); there is no `FeltArray.append`. To convert a `Felt` to a JS `bigint`, use `Felt.asInt()` (`miden_client_web.d.ts`). When a Rust method appears missing in TS, consult `node_modules/@miden-sdk/miden-sdk/dist/index.d.ts` and `dist/crates/miden_client_web.d.ts` first instead of guessing the TS spelling.
 - TS amounts are always `bigint`. Mixing `number` causes silent precision loss above `Number.MAX_SAFE_INTEGER` and `TypeError` below.
-- `Word.toU64s()` returns `BigUint64Array` of length 4 (`miden_client_web.d.ts`:4535). Each lane is a `bigint` (e.g. `word.toU64s()[0]`). Use it when reading the four `u64` lanes from a Value storage slot or building assertions on `Word` outputs.
+- `Word.toU64s()` returns `BigUint64Array` of length 4 (`miden_client_web.d.ts`). Each lane is a `bigint` (e.g. `word.toU64s()[0]`). Use it when reading the four `u64` lanes from a Value storage slot or building assertions on `Word` outputs.
 
 For the canonical Rust types, see [`0xMiden/rust-sdk`](https://github.com/0xMiden/rust-sdk) (the Rust client) and the `miden_objects` crate, which lives in [`0xMiden/miden-base`](https://github.com/0xMiden/miden-base). For the canonical TS types, see `node_modules/@miden-sdk/miden-sdk/dist/index.d.ts`.

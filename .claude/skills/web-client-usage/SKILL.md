@@ -30,15 +30,19 @@ The SDK exposes a top-level `MidenClient` whose state is split across typed
 | `client.compile` | Compiling MASM into account components, tx scripts, note scripts |
 | `client.keystore` | Inserting / fetching / removing secret keys |
 
-`MidenClient` is the public surface. The underlying WASM-bound class is exported
-as `WasmWebClient` (a subclass of the raw WASM `WebClient`, which the package
-re-exports internally as `WasmWebClientBase`; there is no public `WebClient`
-export) for low-level operations the resource API does not yet wrap. To reach it,
-either use the React `useMidenClient()` hook (it returns `WasmWebClient`) or
-import `WasmWebClient` directly from `@miden-sdk/miden-sdk` (the class is
-`@internal` but exported). `MidenClient`
-keeps its wrapped client in a real JS private field (`#inner`), so external
-code cannot reach in directly.
+`MidenClient` is the recommended public high-level surface. The lower-level WASM
+clients are also exported for raw operations the resource API doesn't wrap: the
+raw WASM `WebClient` (re-exported from the package's WASM crate via
+`export *`) and `WasmWebClient`, a thin wrapper subclass of it (the `.d.ts`
+declares `WasmWebClient extends WasmWebClientBase`, where `WasmWebClientBase` is
+that raw `WebClient`). Both are importable from `@miden-sdk/miden-sdk` in a
+bundler/browser build (the Node CJS entry happens not to re-export the bare
+`WebClient` name, but `tsc` and Vite see it). Prefer `MidenClient`; reach for the
+raw clients only for advanced operations not covered by a hook or the resource
+API. To get a `WasmWebClient`, use the React `useMidenClient()` hook (it returns
+one) or import it directly (the class is `@internal` but exported). `MidenClient`
+keeps its wrapped client in a real JS private field (`#inner`), so external code
+cannot reach in directly.
 
 ## Client Initialization
 
@@ -375,7 +379,7 @@ its commitment with the account.
 ## Compile
 
 ```typescript
-await client.compile.component({ code, slots, supportAllTypes: true }); // supportAllTypes defaults to true (api-types.d.ts:784); set false if your component supplies its own auth-tx kernel invocation.
+await client.compile.component({ code, slots, supportAllTypes: true }); // supportAllTypes defaults to true (api-types.d.ts); set false if your component supplies its own auth-tx kernel invocation.
 await client.compile.txScript({ code, libraries });
 await client.compile.noteScript({ code, libraries });
 ```
