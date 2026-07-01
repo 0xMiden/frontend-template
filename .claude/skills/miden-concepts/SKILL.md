@@ -30,7 +30,7 @@ Key properties:
 ### Accounts
 Each account is an independent smart contract containing:
 - **Code** — Immutable logic compiled from Rust components
-- **Storage** — Up to 255 slots (Value or StorageMap)
+- **Storage** — Up to 255 slots exposed in Rust as `StorageValue<T>` or `StorageMap<K, V>`
 - **Vault** — Holds fungible and non-fungible assets
 - **Nonce** — Incremented with each state change
 - **ID** — Unique identifier (prefix + suffix, 2 Felts)
@@ -40,7 +40,7 @@ Accounts are composed from **components** — reusable Rust modules annotated wi
 ### Notes
 Notes are **UTXO-like messages** for asynchronous inter-account communication. A note contains:
 - **Script** — Logic that executes when the note is consumed
-- **Storage** — Data accessible to the script during execution (`NoteStorage`, Vec<Felt>)
+- **Storage** — Data accessible to the script during execution (`NoteStorage`, backed by `Vec<Felt>`)
 - **Assets** — Fungible/non-fungible tokens attached to the note
 - **Metadata** — Sender, tag, note type (public/private)
 
@@ -58,7 +58,8 @@ A transaction is a **single-account state transition** with 4 phases:
 2. Bob's transaction consumes that note, receiving the tokens
 
 ### Assets
-- **Fungible**: `[amount, 0, faucet_suffix, faucet_prefix]` (1 Word)
+- **SDK shape**: `Asset { key: Word, value: Word }`
+- **Fungible**: asset amount lives in `asset.value[0]`
 - **Non-fungible**: Unique token tied to a faucet account
 - Assets live in account **vaults** and move between accounts via notes
 - Created by **faucet accounts** using `faucet::create_fungible_asset()` or `faucet::mint()`
@@ -66,8 +67,11 @@ A transaction is a **single-account state transition** with 4 phases:
 ### Felt and Word
 - **Felt**: Field element in the Goldilocks prime field (p = 2^64 - 2^32 + 1). The fundamental data unit.
 - **Word**: Array of 4 Felts (32 bytes). Used for cryptographic hashes, storage keys, account IDs.
+- **Felt constructors** (Rust `miden_field::Felt` — the same type used host-side in clients/tests *and* guest-side inside `#[component]`/`#[note]` contract code, which re-exports it): `Felt::new(u64)` is **fallible** in v0.15 — it returns `Result<Felt, FeltFromIntError>` and rejects out-of-range values (delegates to `from_canonical_checked`), so callers must `?`/match it (guest code typically `Felt::new(0).unwrap()`). `Felt::new_unchecked(u64)` is the raw, non-reducing constructor (any `u64`, no validation). Always-succeed constructors (return a bare `Felt`): `Felt::from_u8` / `from_u16` / `from_u32`. Non-panicking but fallible: `Felt::from_canonical_checked(u64) -> Option<Felt>` (returns `None` when out of range). Note the JS/React SDK's `Felt` is a *different* type whose `Felt.new(u64)` is infallible and whose accessor is `.asInt()`.
+- **Word constructors**: `Word::new`, `Word::from([u32; 4])`, `Word::from([Felt; 4])`, `Word::try_from([u64; 4])`
+- **Current accessors**: `felt.as_canonical_u64()`, `word.as_elements()`, `word.into_elements()`, `word.as_bytes()`, `word.to_hex()`
 
-**WARNING**: Felt arithmetic is **modular**. Subtraction wraps around the prime. Always validate with `.as_u64()` before subtracting. See the miden-pitfalls skill for details.
+**WARNING**: Felt arithmetic is **modular**. Subtraction wraps around the prime. Always validate with `.as_canonical_u64()` before subtracting (`.asInt()` in the JS/React SDK). See the rust-sdk-pitfalls skill (or frontend-pitfalls for the JS side) for details.
 
 ## Standard Note Patterns
 
@@ -82,11 +86,13 @@ A transaction is a **single-account state transition** with 4 phases:
 | Component | Purpose |
 |-----------|---------|
 | `BasicWallet` | Standard wallet: `receive_asset()`, `move_asset_to_note()` |
-| `BasicFungibleFaucet` | Mint/burn fungible tokens |
+| `FungibleFaucet` | Mint/burn fungible tokens; built via `FungibleFaucet::builder()` |
 | `NoAuth` | No authentication (for testing) |
 | `AuthSingleSig` | Production signature authentication — unified auth component covering both Falcon-512 and ECDSA-K256 key types |
 
-**v14 note**: `AuthSingleSig` unifies what were previously per-scheme auth components (one for Falcon-512, one for ECDSA-K256) into a single component that dispatches on the key type ([miden-client#1798](https://github.com/0xMiden/miden-client/pull/1798)). In the same release the underlying Falcon-512 signature scheme adopted Poseidon2 as its hash function, and is now named `Falcon512Poseidon2`. If you see the older per-scheme component names or the old signature-scheme name in examples or docs, the source predates these auth changes and needs updating.
+**Auth**: `AuthSingleSig` is a single auth component that dispatches on the key type, so one component handles both Falcon-512 and ECDSA-K256 keys. The Falcon-512 scheme uses Poseidon2 as its hash function and is named `Falcon512Poseidon2`.
+
+**Fungible faucet**: `FungibleFaucet` is the fungible-faucet component, constructed with the `bon`-generated `FungibleFaucet::builder()` (required setters `.name(TokenName::new(..)?)`, `.symbol(TokenSymbol::new(..)?)`, `.decimals(n)`, `.max_supply(AssetAmount)`, then `.build()?`).
 
 ## Development Model
 
@@ -99,12 +105,12 @@ Three contract types:
 - `#[note]` — Note script (executes when consumed)
 - `#[tx_script]` — One-off transaction logic
 
-Contracts are tested locally with **MockChain** (no network needed) and deployed via **miden-client**.
+Contracts are tested locally with **MockChain** (no network needed) and deployed via the Miden Rust client (**`0xMiden/rust-sdk`**, formerly `miden-client`; the browser client split into `0xMiden/web-sdk`).
 
 ## Key Design Decisions for App Architects
 
 1. **One account per service** — Each bank, vault, or DEX pool is a separate account
 2. **Notes for communication** — Use deposit/withdraw/request notes instead of direct calls
-3. **Storage for state** — Use `Value` for flags, `StorageMap` for mappings
+3. **Storage for state** — Use `StorageValue<T>` for single slots and `StorageMap<K, V>` for mappings
 4. **Privacy by default** — Choose `NoteType::Public` only when discoverability is needed
 5. **Components for reuse** — Standard wallet, auth, and faucet components compose into accounts

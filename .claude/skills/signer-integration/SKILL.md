@@ -7,8 +7,9 @@ description: Guide to integrating external signers (Para, Turnkey, MidenFi walle
 
 ## Overview
 
-By default, MidenProvider uses a **local keystore** (keys in IndexedDB, no wallet connection needed). To have MidenProvider **sign through an external wallet/keystore**, wrap MidenProvider with a signer provider:
+By default, MidenProvider uses a **local keystore** (keys in IndexedDB, no wallet connection needed). For production apps, wrap MidenProvider with a signer provider to use external key management.
 
+Signer providers must wrap MidenProvider (outer → inner):
 ```
 <SignerProvider>      ← manages keys + auth
   <MidenProvider>     ← manages Miden client
@@ -17,16 +18,11 @@ By default, MidenProvider uses a **local keystore** (keys in IndexedDB, no walle
 </SignerProvider>
 ```
 
-> **v0.15 init-gating caveat (verified against `web-sdk` `MidenProvider.tsx`).** When a signer provider is an ancestor of `MidenProvider`, v0.15 `MidenProvider` does **not** create the client until the signer connects — while `signerContext.isConnected === false` it returns early without a `WebClient`, so `isReady` stays `false`. Practical consequences:
-> - **Gate your UI on connection**, not just `isReady` — show a "connect wallet / choose local" screen while disconnected (see the web-sdk example app's `SignerSelector`), or the app will sit on "Initializing…" forever before the wallet connects (and in any environment without the extension).
-> - **If you need the client ready before a wallet connects** (e.g. to read *public* data, or the wallet only *submits* txs via the wallet adapter's `requestTransaction` rather than signing through `MidenProvider`), run `MidenProvider` in **local-keystore mode** — keep it OUTSIDE the signer provider (no signer above it) — and keep the wallet provider inside, used only for connect + `requestTransaction`. That's what this template does (`src/providers.tsx`).
-> - The multi-signer pattern (`MultiSignerProvider` + `SignerSlot`, with `MidenProvider` as a sibling) has the same connect-first requirement.
-
 ## Pre-Built Signer Providers
 
 ### Para (EVM Wallets)
 ```tsx
-import { ParaSignerProvider } from "@miden-sdk/para";
+import { ParaSignerProvider, useParaSigner } from "@miden-sdk/use-miden-para-react";
 
 <ParaSignerProvider apiKey="your-api-key" environment="PRODUCTION">
   <MidenProvider config={{ rpcUrl: "testnet" }}>
@@ -41,15 +37,19 @@ const { para, wallet, isConnected } = useParaSigner();
 ```tsx
 import { TurnkeySignerProvider } from "@miden-sdk/miden-turnkey-react";
 
-// Config is optional — defaults to https://api.turnkey.com
-// and reads VITE_TURNKEY_ORG_ID from environment
-<TurnkeySignerProvider>
+// `config` is REQUIRED, and `defaultOrganizationId` is required within it.
+// Type: Pick<TurnkeySDKBrowserConfig, "defaultOrganizationId">
+//       & Partial<Omit<TurnkeySDKBrowserConfig, "defaultOrganizationId">>
+// — only the other fields (e.g. `apiBaseUrl`) are optional; `apiBaseUrl`
+// defaults to https://api.turnkey.com. There is NO env-var fallback for the
+// org id (the provider does not read `VITE_TURNKEY_ORG_ID`).
+<TurnkeySignerProvider config={{ defaultOrganizationId: "your-org-id" }}>
   <MidenProvider config={{ rpcUrl: "testnet" }}>
     <App />
   </MidenProvider>
 </TurnkeySignerProvider>
 
-// Or with explicit config:
+// Or override the apiBaseUrl default:
 <TurnkeySignerProvider config={{
   apiBaseUrl: "https://api.turnkey.com",
   defaultOrganizationId: "your-org-id",
@@ -58,11 +58,15 @@ import { TurnkeySignerProvider } from "@miden-sdk/miden-turnkey-react";
 </TurnkeySignerProvider>
 ```
 
+`TurnkeySignerProvider` also accepts optional `customComponents` and `importAccountId` props, which it forwards into `accountConfig` (see "Custom Account Components").
+
 Connect via passkey:
 ```tsx
 import { useSigner } from "@miden-sdk/react";
 import { useTurnkeySigner } from "@miden-sdk/miden-turnkey-react";
 
+// useSigner() returns null in local-keystore mode (no signer provider mounted),
+// so guard before destructuring.
 const signer = useSigner();
 if (!signer) return null;
 const { isConnected, connect, disconnect } = signer;
@@ -81,7 +85,6 @@ import { WalletAdapterNetwork } from "@miden-sdk/miden-wallet-adapter-base";
   appName="My App"                                        // optional: passed to MidenWalletAdapter
   network={WalletAdapterNetwork.Testnet}                  // WalletAdapterNetwork enum: Devnet | Testnet | Localnet
   autoConnect                                             // reconnect on mount. Default: false
-  accountType="RegularAccountImmutableCode"               // Default: "RegularAccountImmutableCode"
   storageMode="public"                                    // "private" | "public". Default: "public"
   customComponents={[myComponent]}                        // optional: custom AccountComponents
   privateDataPermission={permission}                      // optional: private data access level
@@ -95,21 +98,27 @@ import { WalletAdapterNetwork } from "@miden-sdk/miden-wallet-adapter-base";
 
 With `MidenFiSignerProvider` in place, use `useSigner()` from the React SDK to manage connection state. The regular React SDK hooks (`useSend`, `useConsume`, etc.) automatically sign via the connected wallet — no additional wiring needed.
 
-### This template's MidenFi-specific pattern
+> The provider accepts an `accountType` prop, but it is a no-op: account visibility is determined solely by `storageMode` (`private`/`public`), and the provider always imports the account by ID (`importAccountId`), bypassing the builder path entirely. Omit it.
 
-This template deviates from the generic `useSigner()` approach in two places — worth knowing because it's a pattern you'll likely want when the wallet extension is the primary signer:
+### Frontend-template-specific MidenFi pattern
 
-- **Wallet button uses `useMidenFiWallet()` + `WalletReadyState`** (`src/components/AppContent.tsx`). The button gates on `wallet.readyState` so it can render a disabled "Install MidenFi Wallet" state before the extension is detected. `useSigner().connect()` would silently fall through to the adapter's `window.open(adapter.url, ...)` install fallback (Chrome Web Store → Play Store redirect on some platforms); gating on `readyState` avoids that path entirely.
-- **Custom transaction flow calls `wallet.requestTransaction(...)` directly** (`src/hooks/useIncrementCounter.ts`). The counter increment builds a bespoke `TransactionRequest` (via `TransactionRequestBuilder` and a custom `Note`) and hands it to the wallet for signing + submission. (In v0.15 the note can no longer carry a network-execution target — `NoteAttachment.newNetworkAccountTarget` and `NoteMetadata.withAttachment` were removed; see the `useIncrementCounter.ts` blocker note.) The React SDK mutation hooks (`useSend`, `useConsume`, ...) don't cover this kind of custom note construction, and the tx is submitted by the wallet rather than the local client — so `useWaitForCommit` doesn't apply either.
+The [frontend template](https://github.com/0xMiden/frontend-template) (on web-sdk 0.15 — `@miden-sdk/miden-sdk@0.15.3`, `@miden-sdk/react@0.15.3`, wallet adapters `0.15.1`) deviates from the generic patterns above in three places worth knowing when the wallet extension is the primary signer:
+
+- **Provider order is INVERTED: `MidenProvider` runs OUTSIDE `MidenFiSignerProvider`** — see `src/providers.tsx`. This is the opposite of the canonical signer-outer / Miden-inner nesting at the top of this skill, and it is deliberate. In v0.15, when a signer provider is an *ancestor* of `MidenProvider`, `MidenProvider` treats it as its external keystore and does NOT create the `WebClient` until the signer connects (the init effect sees `signerIsConnected === false` and returns early before building the client). With a wallet that hasn't connected — or any environment without the extension — the app would hang on "Initializing…" and even public reads couldn't run. The template never signs *through* `MidenProvider` (it signs its only write, the counter increment, through the local `WebClient` rather than the wallet), so it runs `MidenProvider` in local-keystore mode (no signer ancestor → it initializes immediately, reads work pre-connect) and keeps `MidenFiSignerProvider` *inside*, purely for the connect button and the wallet's `requestTransaction`. `MidenFiSignerProvider` works standalone (it provides its own `WalletContext` + `SignerContext`; no `MultiSignerProvider` needed). Use this inversion only when you do not sign through `MidenProvider`; if external-keystore signing IS the goal, keep the canonical signer-outer order so `MidenProvider` picks up the signer's `signCb`/`accountConfig`.
+- **Wallet button uses `useMidenFiWallet()` + `WalletReadyState`** — see `src/components/AppContent.tsx`. The button gates on `wallet?.readyState` (rendering a disabled "Install MidenFi Wallet" state unless `readyState` is `Installed` or `Loadable`) so it can show install state before the extension is detected. `useSigner().connect()` would silently fall through to the adapter's `window.open(adapter.url, ...)` install fallback; gating on `readyState` avoids that path.
+- **The counter increment is a local two-transaction flow, not a wallet-signed tx** — see `src/hooks/useIncrementCounter.ts`. It does not use the wallet at all. It creates a throwaway local sender (`client.newWallet(...)`), publishes a plain increment note as that sender's own output note (`TransactionRequestBuilder().withOwnOutputNotes(...)`), then consumes the note *as the counter* (`client.newConsumeTransactionRequest([note])`). Both transactions are submitted by the local `WebClient` via `submitNewTransactionWithProver(accountId, request, prover)` (remote prover), never by the wallet, so `useWaitForCommit` doesn't apply and the template polls the counter's storage map instead. This mirrors the project-template `increment_count` reference.
+  - **The note APIs in that hook (use as the reference):** the JS `NoteMetadata` constructor is attachment-less — `new NoteMetadata(sender, noteType, tag)`. Build the note with `new Note(new NoteAssets(), metadata, recipient)`. The increment note carries no attachment and uses tag `0`; the counter is a plain **public `NoAuth`** account, so anyone can consume the note against it with no signature. (Attachments still exist for other uses — `NoteAttachment.fromWord(scheme, word)` / `fromWords(scheme, words)`, read back via `.toWords()`, or `createNoteAttachment(...)` — but the increment does not need one. v0.15 removed the network-account model, so there is no network-execution targeting.)
+  - **Two hard requirements (don't regress):** (1) the client runs with `useWorker: false` on `MidenProvider`. The default worker shim keeps a separate in-memory SMT forest per thread; consuming against an *imported* (not locally-created) account applies a delta transaction whose apply step looks the account up in the executing (worker) forest, which never contains the late-imported counter, so it fails with `account data wasn't found` ([web-sdk#222](https://github.com/0xMiden/web-sdk/issues/222)). One thread means one forest, which fixes it. (2) Submits go through the remote prover (`submitNewTransactionWithProver`) so the worker-less single thread only pays local execution, not minutes of local proving. The increment works end-to-end on v0.15 (verified on testnet); there is no `INCREMENT_ONCHAIN_BLOCKED` flag.
 
 ## Unified Signer Interface
 
-Works with any signer provider above:
+Works with any signer provider above. `useSigner()` returns `null` in local-keystore mode (no signer provider mounted), so guard before destructuring:
 ```tsx
 import { useSigner } from "@miden-sdk/react";
 
 const signer = useSigner();
-if (!signer) return null;
+if (!signer) return null; // local keystore mode — no external signer
+
 const { isConnected, connect, disconnect, name } = signer;
 
 if (!isConnected) {
@@ -131,7 +140,7 @@ import { AccountStorageMode } from "@miden-sdk/miden-sdk";
   isConnected: true,
   accountConfig: {
     publicKeyCommitment: userPublicKeyCommitment,  // Uint8Array
-    storageMode: AccountStorageMode.private(),
+    storageMode: AccountStorageMode.private(),      // AccountStorageMode instance, not a string
   },
   signCb: async (pubKey, signingInputs) => {
     // Route to your signing service
@@ -149,7 +158,7 @@ import { AccountStorageMode } from "@miden-sdk/miden-sdk";
 **Required fields:**
 - `name` — Display name for the signer
 - `storeName` — Unique string per user (isolates IndexedDB data between users)
-- `accountConfig` — Public key commitment + storage mode
+- `accountConfig` — `{ publicKeyCommitment: Uint8Array; storageMode: AccountStorageMode; ... }` (storage mode is an `AccountStorageMode` instance, e.g. `AccountStorageMode.private()`, not a string)
 - `signCb` — Callback that signs transaction data with your key management service
 - `connect` / `disconnect` — Session lifecycle handlers
 
@@ -165,11 +174,12 @@ const myDexComponent: AccountComponent = await loadCompiledComponent();
 
 const accountConfig: SignerAccountConfig = {
   publicKeyCommitment: userPublicKeyCommitment,
-  accountType: "RegularAccountUpdatableCode",
-  storageMode: myStorageMode,
+  storageMode: myStorageMode,            // an AccountStorageMode instance (e.g. AccountStorageMode.public())
   customComponents: [myDexComponent],
 };
 ```
+
+`SignerAccountConfig` has an `accountType` field, but it is ignored — account kind and code mutability are not encoded in the account, so visibility comes solely from `storageMode`. Omit it.
 
 Components are appended to the `AccountBuilder` after the default basic wallet component. The field is optional — omitting it preserves default behavior.
 
