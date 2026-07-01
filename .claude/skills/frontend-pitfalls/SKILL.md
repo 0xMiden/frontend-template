@@ -12,8 +12,8 @@ Components that use Miden hooks before MidenProvider finishes WASM initializatio
 ```tsx
 // WRONG — crashes if WASM not ready
 function App() {
-  const { data } = useAccounts(); // throws before init
-  return <div>{data?.wallets.length}</div>;
+  const { accounts } = useAccounts(); // throws before init
+  return <div>{accounts.length}</div>;
 }
 
 // CORRECT — use loadingComponent or check isReady
@@ -106,8 +106,8 @@ const ADMIN = "miden1qy35..."; // this is network-specific!
 // CORRECT — use hex format for cross-network compatibility
 const ADMIN = "0x1234567890abcdef";
 
-// CORRECT — derive bech32 per network
-account.bech32id(); // returns correct bech32 for current network
+// CORRECT — derive bech32 per network (pass networkId + accountInterface)
+account.id().toBech32(networkId, accountInterface); // or React helper toBech32AccountId(...)
 ```
 
 Both hex and bech32 formats work in all hooks. Prefer hex for constants, bech32 for display.
@@ -159,7 +159,7 @@ Always pass `crossOriginIsolation: true` explicitly. The plugin's `false` defaul
 
 ## FP9: React StrictMode Double-Init (LOW)
 
-React 19 StrictMode double-invokes effects in development. MidenProvider handles this via `isInitializedRef`, but direct `WasmWebClient.createClient()` calls will initialize twice. (The SDK exports `WasmWebClient` as `WebClient` for convenience.)
+React 19 StrictMode double-invokes effects in development. MidenProvider handles this via `isInitializedRef`, but direct `WasmWebClient.createClient()` calls will initialize twice. (`WasmWebClient` is the low-level WASM client class; for most apps use `MidenProvider` / `MidenClient` instead.)
 
 ```tsx
 // WRONG — manual client creation in useEffect

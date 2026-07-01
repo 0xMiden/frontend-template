@@ -24,9 +24,13 @@ import {
   MOCK_FAUCET_HEADER,
 } from "@/__tests__/fixtures";
 
-// Example component that lists accounts — a common Miden UI pattern
+// Example component that lists accounts — a common Miden UI pattern.
+// v0.15: useAccounts() returns `accounts` (the source of truth). `wallets` is
+// @deprecated (mirrors `accounts`) and `faucets` is @deprecated and ALWAYS EMPTY
+// (the faucet-vs-wallet flag was removed from the account id; detect faucets
+// per-account from their components). So this pattern uses `accounts`.
 function AccountList() {
-  const { wallets, faucets, isLoading, error, refetch } = useAccounts();
+  const { accounts, isLoading, error, refetch } = useAccounts();
   const { syncHeight } = useSyncState();
 
   if (error) {
@@ -45,16 +49,10 @@ function AccountList() {
   return (
     <div>
       <p>Synced to block {syncHeight}</p>
-      <h2>Wallets ({wallets.length})</h2>
-      <ul aria-label="wallets">
-        {wallets.map((w) => (
-          <li key={String(w.id)}>{String(w.id)}</li>
-        ))}
-      </ul>
-      <h2>Faucets ({faucets.length})</h2>
-      <ul aria-label="faucets">
-        {faucets.map((f) => (
-          <li key={String(f.id)}>{String(f.id)}</li>
+      <h2>Accounts ({accounts.length})</h2>
+      <ul aria-label="accounts">
+        {accounts.map((a) => (
+          <li key={String(a.id)}>{String(a.id)}</li>
         ))}
       </ul>
     </div>
@@ -66,19 +64,15 @@ describe("Query Hook Pattern", () => {
     vi.clearAllMocks();
   });
 
-  // Default mocks return realistic data — component should render account lists
-  it("renders account lists with data", () => {
+  // Default mocks return realistic data — component should render the account list
+  it("renders the account list with data", () => {
     render(<AccountList />);
 
-    // Wallet list should contain both mock wallets
-    const walletList = screen.getByRole("list", { name: "wallets" });
-    expect(walletList.children).toHaveLength(2);
+    // `accounts` is the v0.15 source of truth — every account header appears here
+    const accountList = screen.getByRole("list", { name: "accounts" });
+    expect(accountList.children).toHaveLength(3);
     expect(screen.getByText(MOCK_WALLET_HEADER.id)).toBeInTheDocument();
     expect(screen.getByText(MOCK_WALLET_HEADER_2.id)).toBeInTheDocument();
-
-    // Faucet list should contain the mock faucet
-    const faucetList = screen.getByRole("list", { name: "faucets" });
-    expect(faucetList.children).toHaveLength(1);
     expect(screen.getByText(MOCK_FAUCET_HEADER.id)).toBeInTheDocument();
 
     // Sync height from useSyncState mock
@@ -137,7 +131,6 @@ describe("Query Hook Pattern", () => {
     });
 
     render(<AccountList />);
-    expect(screen.getByText("Wallets (0)")).toBeInTheDocument();
-    expect(screen.getByText("Faucets (0)")).toBeInTheDocument();
+    expect(screen.getByText("Accounts (0)")).toBeInTheDocument();
   });
 });

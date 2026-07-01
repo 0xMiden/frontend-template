@@ -40,26 +40,26 @@ Only use the WASM client directly via `useMidenClient()` for operations not cove
 import { MidenProvider } from "@miden-sdk/react";
 import { MidenFiSignerProvider } from "@miden-sdk/miden-wallet-adapter-react";
 
-<MidenFiSignerProvider
-  appName={APP_NAME}
-  network={WalletAdapterNetwork.Testnet}
-  autoConnect
+<MidenProvider
+  config={{ rpcUrl: MIDEN_RPC_URL, prover: MIDEN_PROVER }}
+  loadingComponent={<div className="loading">Loading Miden WASM...</div>}
 >
-  <MidenProvider
-    config={{ rpcUrl: MIDEN_RPC_URL, prover: MIDEN_PROVER }}
-    loadingComponent={<div className="loading">Loading Miden WASM...</div>}
+  <MidenFiSignerProvider
+    appName={APP_NAME}
+    network={WalletAdapterNetwork.Testnet}
+    autoConnect
   >
     <App />
-  </MidenProvider>
-</MidenFiSignerProvider>
+  </MidenFiSignerProvider>
+</MidenProvider>
 ```
 
-> `MidenFiSignerProvider` must wrap `MidenProvider`. `MidenProvider` reads from `SignerContext` during initialization (to wire its external-keystore client), so the signer context has to exist before `MidenProvider` mounts.
+> **v0.15 provider order — `MidenProvider` runs OUTSIDE the signer provider.** When a signer provider (`MidenFiSignerProvider`) is an *ancestor* of `MidenProvider`, v0.15 `MidenProvider` treats it as its external keystore and does **not** create the client until the wallet connects (it sees `signerContext.isConnected === false` and returns early). With no wallet connected — before the user connects, or in any environment without the MidenFi extension — the app then hangs forever on "Initializing Miden client…". This template signs entirely through the local `MidenProvider` client — the increment's publish + consume transactions are submitted by the WebClient itself (see the increment flow section below), not the wallet — so `MidenProvider` runs in local-keystore mode (no signer above it → it initializes immediately and the whole increment works without a connected wallet), with `MidenFiSignerProvider` *inside* it purely for the connect button (for apps that additionally want wallet-signed transactions). If instead you DO want `MidenProvider` to sign via the wallet, put the signer provider above it — but then gate your UI on `useMiden().isReady` / signer connection (show a "connect" screen), don't expect the client before the wallet connects. (This init-gating behavior is undocumented in the migration guide; verified against `web-sdk` `packages/react-sdk/src/context/MidenProvider.tsx`.)
 
 ### Query Hooks
 Each returns its own result shape plus `isLoading`, `error`, `refetch`:
 ```tsx
-const { wallets, faucets } = useAccounts();
+const { accounts } = useAccounts();           // wallets is @deprecated (mirrors accounts); faucets is @deprecated and always empty in v0.15 — detect faucets per-account from components
 const { account, assets, getBalance } = useAccount(accountId);
 const { notes, consumableNotes } = useNotes();
 const { syncHeight, sync } = useSyncState();
@@ -169,17 +169,34 @@ cargo miden build --release
 ```bash
 .claude/hooks/check-artifacts.sh
 ```
+Note: this hook only checks that `.masp` files are present and non-trivial in size — it does **not** validate the MASP/MAST format version, so it will not catch a pre-v0.15 ↔ v0.15 mismatch.
+
+### v0.15 compatibility
+The `.masp` files shipped in `public/packages/` are pre-v0.15 builds: they embed MAST forest version `[0,0,2]`, which v0.15's `Package.deserialize` rejects (it requires `[0,0,3]`). They must be rebuilt with a `cargo-miden` toolchain whose `miden-core`/`miden-mast-package` are 0.23.x. Older MAST artifacts do not round-trip to v0.15.
 
 ### Failure recovery
 - **Missing artifacts**: Build contracts with `cargo miden build` or ask the PM to supply the `.masp` files
 - **Stale artifacts**: Rebuild and re-copy after contract changes
-- **Deserialization failure at runtime**: Version mismatch — rebuild contracts with the SDK version matching `@miden-sdk/miden-sdk` in `package.json`
+- **Deserialization failure at runtime**: Version mismatch — rebuild contracts with a `cargo-miden` toolchain matching the `@miden-sdk/miden-sdk` version in `package.json` (for v0.15, one that emits MAST version `[0,0,3]`)
 
-## Known Temporary Workarounds
+## v0.15 Increment Flow (works end-to-end)
 
-One remaining upstream feature gap. The README has full rationale + removal steps; summary below.
+The on-chain increment is **not** blocked and needs no note attachment or network operator. The counter is a plain **public, `NoAuth`** account (built from `counter-account.masp` with `AccountType::Public` + `NoAuth` — *not* a network account; v0.15 removed the network-account concept and `AccountStorageMode::Network`). `useIncrementCounter.ts::increment` mirrors the project-template `increment_count` reference as a two-transaction flow submitted entirely by the **local WebClient** (no wallet involved):
 
-**Fixed-interval network poll** ([0xMiden/miden-client#2111](https://github.com/0xMiden/miden-client/issues/2111)): `useIncrementCounter.ts::increment` polls the counter's storage map every `NETWORK_POLL_INTERVAL_MS` (2.5 s) until the value changes or `NETWORK_POLL_TIMEOUT_MS` (30 s) elapses. `useWaitForCommit` doesn't apply because the increment is wallet-submitted and consumed externally by the network operator — the local client never sees the tx. #2111 tracks a React-SDK subscription primitive for this case (narrowed from the broader event-system discussion in #467).
+1. Create a throwaway local sender wallet (`client.newWallet(AccountStorageMode.private(), 2 /* AuthRpoFalcon512 */, undefined)`).
+2. Build a plain increment note from `increment-note.masp` (`Package.deserialize` → `NoteScript.fromPackage` → `NoteRecipient`/`NoteMetadata(sender.id(), NoteType.Public, new NoteTag(0))`/`Note`) — **no** `NoteAttachment`, tag `0`. Capture `note.id()` *before* publishing (wasm-bindgen moves value-class args).
+3. Publish it as the sender's own output note (`TransactionRequestBuilder().withOwnOutputNotes(new NoteArray([note])).build()` → submit as the sender).
+4. Re-import the counter (`client.importAccountById(counterId)`, unconditional) and read the current on-chain count as the baseline.
+5. When the note is consumable (`getConsumableNotes(counterId)`), rebuild fresh `Note`s from the records (`record.inputNoteRecord().toNote()`, filtered to our `note.id()`) and consume them as the counter (`newConsumeTransactionRequest` → submit as `counterId`). NoAuth ⇒ no signature.
+
+### Two hard-won requirements (don't regress these)
+
+- **`useWorker: false` on `MidenProvider`** (`src/providers.tsx`). The default worker shim keeps *two* in-memory SMT forests (main + worker) over one IndexedDB; `importAccountById` registers only the main forest while `submitNewTransaction`/`apply_transaction` runs in the worker. Consuming against an **imported** (nonce>0) account applies a *delta* transaction, whose apply path looks the account up in the executing instance's forest — which under the worker never contains the late-imported counter, failing with `apply transaction result: storage error: account data wasn't found for account id …`. One thread → one forest → apply succeeds. (Verified against `web-sdk crates/idxdb-store/src/transaction/mod.rs`.)
+- **Remote prover for submits.** `increment` submits via `client.submitNewTransactionWithProver(id, request, prover)` using `useMiden().prover` (the remote testnet prover from `config.prover`). Bare `submitNewTransaction` proves *locally* and single-threaded (minutes), which with `useWorker:false` would freeze the tab. Remote proving keeps the main thread to local execution only.
+
+Common wasm-bindgen gotchas encoded in the hook: pass the **numeric** `AuthScheme` (`AuthRpoFalcon512 = 2`) — the exported `AuthScheme` const is `{Falcon:"falcon", ECDSA:"ecdsa"}`, so `AuthScheme.AuthRpoFalcon512` is `undefined` and hangs `newWallet`; mint a **fresh** `AccountId` per `getConsumableNotes` call (it consumes the id by value); never reuse a `Note` handle after it's been moved into a request.
+
+**Fixed-interval network poll** ([0xMiden/miden-client#2111](https://github.com/0xMiden/miden-client/issues/2111)): after submitting, `increment` bounded-polls the counter's storage map every `NETWORK_POLL_INTERVAL_MS` (2.5 s) until the value advances past the baseline or `NETWORK_POLL_TIMEOUT_MS` (60 s) elapses. `useWaitForCommit` doesn't fit cleanly across the publish→commit→consume handoff; #2111 tracks a React-SDK subscription primitive for account-state updates (narrowed from the broader event-system discussion in #467).
 
 ## Critical Pitfalls
 
@@ -236,7 +253,7 @@ git clone https://github.com/vercel-labs/agent-skills.git
 
 For complex applications beyond basic hook usage (custom signers, direct WasmWebClient access, advanced note flows):
 
-1. Clone `miden-client` repo alongside this project (see `frontend-source-guide` skill)
+1. Clone the `0xMiden/web-sdk` repo alongside this project — it holds the React SDK source (`packages/react-sdk/`), web-client (`crates/web-client/`), and the idxdb store (`crates/idxdb-store/`). (miden-client was renamed to `0xMiden/rust-sdk`, the Rust client only.) See the `frontend-source-guide` skill.
 2. Use Plan Mode first — Claude explores React SDK source + examples before coding
 3. Claude uses sub-agents to explore repos efficiently without filling main context
 

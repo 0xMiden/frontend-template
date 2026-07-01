@@ -33,8 +33,11 @@ import {
 
 export const useAccounts = vi.fn(() => ({
   accounts: [MOCK_WALLET_HEADER, MOCK_WALLET_HEADER_2, MOCK_FAUCET_HEADER],
-  wallets: [MOCK_WALLET_HEADER, MOCK_WALLET_HEADER_2],
-  faucets: [MOCK_FAUCET_HEADER],
+  // v0.15: `wallets` is @deprecated and mirrors `accounts`; `faucets` is
+  // @deprecated and ALWAYS EMPTY (the faucet-vs-wallet flag was removed from the
+  // account id — detect faucets per-account from components). Use `accounts`.
+  wallets: [MOCK_WALLET_HEADER, MOCK_WALLET_HEADER_2, MOCK_FAUCET_HEADER],
+  faucets: [],
   isLoading: false,
   error: null,
   refetch: vi.fn(),
@@ -149,20 +152,6 @@ export const useImportAccount = vi.fn(() => ({
   importAccount: vi.fn(async () => MOCK_ACCOUNT),
   account: null,
   isImporting: false,
-  error: null,
-  reset: vi.fn(),
-}));
-
-export const useInternalTransfer = vi.fn(() => ({
-  transfer: vi.fn(async () => ({
-    createTransactionId: "0xtx1",
-    consumeTransactionId: "0xtx2",
-    noteId: "0xnote1",
-  })),
-  transferChain: vi.fn(async () => []),
-  result: null,
-  isLoading: false,
-  stage: "idle" as const,
   error: null,
   reset: vi.fn(),
 }));

@@ -11,7 +11,7 @@ direct store import/export, advanced sync control).
 # Web SDK Usage Patterns
 
 This skill targets the `@miden-sdk/miden-sdk` npm package shipped from
-[`0xMiden/miden-client`](https://github.com/0xMiden/miden-client). For
+[`0xMiden/web-sdk`](https://github.com/0xMiden/web-sdk) (e.g. `crates/web-client/`). For
 React-hook usage, prefer the `react-sdk-patterns` skill - only fall through
 to the raw client when a hook does not cover what you need.
 
@@ -30,13 +30,19 @@ The SDK exposes a top-level `MidenClient` whose state is split across typed
 | `client.compile` | Compiling MASM into account components, tx scripts, note scripts |
 | `client.keystore` | Inserting / fetching / removing secret keys |
 
-`MidenClient` is the public surface. The underlying WASM-bound class is still
-exported as `WasmWebClient` (alias for the legacy `WebClient`) for low-level
-operations the resource API does not yet wrap. To reach it, either use the
-React `useMidenClient()` hook or import `WasmWebClient` directly from
-`@miden-sdk/miden-sdk` (the class is `@internal` but exported). `MidenClient`
-keeps its wrapped client in a real JS private field (`#inner`), so external
-code cannot reach in directly.
+`MidenClient` is the recommended public high-level surface. The lower-level WASM
+clients are also exported for raw operations the resource API doesn't wrap: the
+raw WASM `WebClient` (re-exported from the package's WASM crate via
+`export *`) and `WasmWebClient`, a thin wrapper subclass of it (the `.d.ts`
+declares `WasmWebClient extends WasmWebClientBase`, where `WasmWebClientBase` is
+that raw `WebClient`). Both are importable from `@miden-sdk/miden-sdk` in a
+bundler/browser build (the Node CJS entry happens not to re-export the bare
+`WebClient` name, but `tsc` and Vite see it). Prefer `MidenClient`; reach for the
+raw clients only for advanced operations not covered by a hook or the resource
+API. To get a `WasmWebClient`, use the React `useMidenClient()` hook (it returns
+one) or import it directly (the class is `@internal` but exported). `MidenClient`
+keeps its wrapped client in a real JS private field (`#inner`), so external code
+cannot reach in directly.
 
 ## Client Initialization
 
@@ -165,19 +171,18 @@ import { NoteVisibility, AccountType, AuthScheme, StorageMode } from "@miden-sdk
 NoteVisibility.Public  // "public"
 NoteVisibility.Private // "private"
 
-AccountType.MutableWallet
-AccountType.ImmutableWallet
 AccountType.FungibleFaucet
 AccountType.NonFungibleFaucet
-AccountType.MutableContract
-AccountType.ImmutableContract
+// ^ the only AccountType values (faucet-kind selectors for accounts.create({ type })).
+// A wallet is the default (omit `type`); a contract is any accounts.create() that
+// passes `components`. As of protocol 0.15 the on-chain account type no longer
+// encodes wallet-vs-contract or mutable-vs-immutable.
 
 AuthScheme.Falcon      // default - Falcon-512 over Poseidon2
 AuthScheme.ECDSA       // EcdsaK256Keccak
 
 StorageMode.Public
-StorageMode.Private
-StorageMode.Network
+StorageMode.Private    // "network" storage mode was removed in v0.15
 ```
 
 Use `NoteVisibility` (not the legacy `NoteType` enum) and `AuthScheme.Falcon`
@@ -188,12 +193,11 @@ for the Poseidon2-based Falcon-512 scheme.
 Type discriminator on `auth`: wallets and faucets take `auth: AuthSchemeType` (a `"falcon" | "ecdsa"` string-union, e.g. `AuthScheme.Falcon`); custom contracts take `auth: AuthSecretKey` (a concrete WASM instance).
 
 ```typescript
-// Wallet - defaults: mutable, private, Falcon
+// Wallet - defaults: private, Falcon (a wallet is the default account kind)
 const wallet = await client.accounts.create();
 
-// Wallet with explicit options
+// Wallet with explicit options (no `type` — wallets don't take one)
 const wallet = await client.accounts.create({
-  type: AccountType.MutableWallet,
   storage: "private",
   auth: AuthScheme.Falcon,
 });
@@ -210,10 +214,9 @@ const faucet = await client.accounts.create({
 // Custom contract - requires seed and AuthSecretKey
 const component = await client.compile.component({ code: contractMasm, slots: [] });
 const contract = await client.accounts.create({
-  type: AccountType.MutableContract,
   seed: new Uint8Array(32),
   auth: secretKey,            // AuthSecretKey, not the AuthScheme enum
-  components: [component],
+  components: [component],    // presence of `components` marks this as a contract
 });
 ```
 
@@ -253,7 +256,7 @@ const { txId, note } = await client.transactions.send({
 });
 
 // Stream the note via the note-transport service
-await client.notes.sendPrivate({ note, to: Address.fromBech32("mtst1...") });
+await client.notes.sendPrivate({ note, to: "mtst1..." });
 ```
 
 ### Mint
@@ -293,8 +296,8 @@ const { txId, consumed, remaining } = await client.transactions.consumeAll({
 ```typescript
 await client.transactions.swap({
   account: wallet,
-  offered: { token: tokenA, amount: 100n },
-  requested: { token: tokenB, amount: 50n },
+  offer: { token: tokenA, amount: 100n },
+  request: { token: tokenB, amount: 50n },
   type: NoteVisibility.Public,            // swap-note visibility
   paybackType: NoteVisibility.Private,    // payback-note visibility
 });
@@ -376,7 +379,7 @@ its commitment with the account.
 ## Compile
 
 ```typescript
-await client.compile.component({ code, slots, supportAllTypes: true }); // supportAllTypes defaults to true (api-types.d.ts:784); set false if your component supplies its own auth-tx kernel invocation.
+await client.compile.component({ code, slots, supportAllTypes: true }); // supportAllTypes defaults to true (api-types.d.ts); set false if your component supplies its own auth-tx kernel invocation.
 await client.compile.txScript({ code, libraries });
 await client.compile.noteScript({ code, libraries });
 ```

@@ -15,7 +15,7 @@ description: Testing conventions, mock factory, fixtures, and TDD workflow for M
 
 ## Mock Factory: `@miden-sdk/react`
 
-All Miden SDK hooks are mocked via `src/__tests__/mocks/miden-sdk-react.ts`. This module exports mock implementations of every hook with realistic default return values.
+The Miden SDK hooks the template uses (plus the common query/mutation hooks and utilities) are mocked via `src/__tests__/mocks/miden-sdk-react.ts`, with realistic default return values. It is not an exhaustive mirror of every `@miden-sdk/react` export: niche hooks (e.g. `useCompile`, the `usePswap*` family, `useSyncControl`, the import/export hooks, `useMultiSigner`) are not mocked. Add an export there if a test needs one.
 
 ### Usage in test files
 
@@ -43,7 +43,7 @@ it("shows empty state", () => {
 ### Default mock return values
 
 **Query hooks** return populated data by default:
-- `useAccounts()` - 2 wallets, 1 faucet
+- `useAccounts()` - 3 account headers in `accounts` (the v0.15 source of truth); `wallets` mirrors `accounts` and `faucets` is empty (both `@deprecated` in v0.15)
 - `useAccount()` - account with 10.0 TEST token balance
 - `useNotes()` - 1 input note, 1 consumable note
 - `useSyncState()` - syncHeight: 12345, not syncing

@@ -13,11 +13,10 @@ const FIXTURE_ADDRESS = "0xdeadbeef00000001";
 
 const defaultHookReturn = {
   increment: vi.fn(),
-  count: 42,
+  count: 42 as number | null,
   isSubmitting: false,
-  isWaiting: false,
-  error: null,
-  walletConnected: true,
+  status: null as string | null,
+  error: null as string | null,
   explorerUrl: `https://testnet.midenscan.com/account/${FIXTURE_ADDRESS}`,
 };
 
@@ -47,41 +46,21 @@ describe("ConfiguredCounter", () => {
     expect(mockIncrement).toHaveBeenCalledOnce();
   });
 
-  it("shows submitting state", () => {
+  it("shows the current step and disables the button while incrementing", () => {
     vi.mocked(useIncrementCounter).mockReturnValue({
       ...defaultHookReturn,
       isSubmitting: true,
-    });
-
-    render(<ConfiguredCounter counterAddress={FIXTURE_ADDRESS} />);
-    const button = screen.getByRole("button", { name: "Submitting..." });
-    expect(button).toBeDisabled();
-  });
-
-  it("shows waiting for network state", () => {
-    vi.mocked(useIncrementCounter).mockReturnValue({
-      ...defaultHookReturn,
-      isWaiting: true,
+      status: "Incrementing (consuming note)...",
     });
 
     render(<ConfiguredCounter counterAddress={FIXTURE_ADDRESS} />);
     const button = screen.getByRole("button", {
-      name: "Waiting for network...",
+      name: "Incrementing (consuming note)...",
     });
     expect(button).toBeDisabled();
   });
 
-  it("disables button when wallet not connected", () => {
-    vi.mocked(useIncrementCounter).mockReturnValue({
-      ...defaultHookReturn,
-      walletConnected: false,
-    });
-
-    render(<ConfiguredCounter counterAddress={FIXTURE_ADDRESS} />);
-    expect(screen.getByRole("button")).toBeDisabled();
-  });
-
-  it("disables button when count is loading (null)", () => {
+  it("disables the button while the count is loading (null)", () => {
     vi.mocked(useIncrementCounter).mockReturnValue({
       ...defaultHookReturn,
       count: null,
@@ -95,13 +74,11 @@ describe("ConfiguredCounter", () => {
   it("displays error message", () => {
     vi.mocked(useIncrementCounter).mockReturnValue({
       ...defaultHookReturn,
-      error: "Transaction failed: insufficient funds",
+      error: "Transaction failed",
     });
 
     render(<ConfiguredCounter counterAddress={FIXTURE_ADDRESS} />);
-    expect(
-      screen.getByText("Transaction failed: insufficient funds"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Transaction failed")).toBeInTheDocument();
   });
 
   it("links to explorer with counter address", () => {

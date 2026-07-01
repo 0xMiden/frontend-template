@@ -6,29 +6,22 @@ export function ConfiguredCounter({
 }: {
   counterAddress: string;
 }) {
-  const {
-    increment,
-    count,
-    isSubmitting,
-    isWaiting,
-    error,
-    walletConnected,
-    explorerUrl,
-  } = useIncrementCounter(counterAddress);
+  const { increment, count, isSubmitting, status, error, explorerUrl } =
+    useIncrementCounter(counterAddress);
 
-  const busy = isSubmitting || isWaiting;
+  // While an increment is in flight the button shows the current step; otherwise
+  // it shows the on-chain count and clicking it runs the increment (publish note
+  // -> counter consumes it). Disabled until the count has been read.
   const buttonLabel = isSubmitting
-    ? "Submitting..."
-    : isWaiting
-      ? "Waiting for network..."
-      : `count is ${count ?? "..."}`;
+    ? (status ?? "Working...")
+    : `count is ${count ?? "..."}`;
 
   return (
     <div className="card">
       <button
         className="counter-button"
         onClick={increment}
-        disabled={busy || count === null || !walletConnected}
+        disabled={isSubmitting || count === null}
       >
         {buttonLabel}
       </button>
