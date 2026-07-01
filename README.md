@@ -1,6 +1,6 @@
 # Miden Frontend Template
 
-Minimal Vite + React + TypeScript template for building Miden frontends. It ships a Miden testnet network-counter demo that reads the on-chain counter and constructs an increment note via the MidenFi wallet adapter for the network operator to execute. **On SDK v0.15 the increment (write) path is currently blocked upstream** — the app loads and reads the counter, but the on-chain increment can't complete yet (see [Network Counter Demo](#network-counter-demo)).
+Minimal Vite + React + TypeScript template for building Miden frontends. It ships a Miden testnet counter demo that reads a shared on-chain counter and **increments it end-to-end from the browser** — the in-browser WebClient publishes an increment note and consumes it against the public `NoAuth` counter, no wallet required. Built on SDK v0.15; the full read + write flow is verified live on testnet (see [Counter Demo](#counter-demo)).
 
 ## Getting Started
 
@@ -9,7 +9,7 @@ yarn install
 yarn dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173). The app connects to Miden testnet out of the box and renders the current counter value. Install the [MidenFi wallet extension](https://chromewebstore.google.com/detail/midenfi) and connect to explore the wallet flow. **Note:** the on-chain increment is currently disabled on Miden SDK v0.15 — the increment button is disabled with an explanation (see [Network Counter Demo](#network-counter-demo)); the read path works.
+Open [http://localhost:5173](http://localhost:5173). The app connects to Miden testnet out of the box, renders the current counter value, and lets you increment it on-chain by clicking the counter button — no wallet required (the button drives the full publish + consume flow via the in-browser client). Optionally install the [MidenFi wallet extension](https://chromewebstore.google.com/detail/midenfi) and connect to explore the wallet adapter, though the counter demo does not use it. See [Counter Demo](#counter-demo).
 
 ## Project Structure
 
@@ -32,21 +32,17 @@ public/packages/
 └── increment_note.masp             # Compiled increment note script (pre-v0.15 build — rebuild for v0.15)
 ```
 
-## Network Counter Demo
+## Counter Demo
 
-The template demonstrates the Miden network-note pattern on testnet:
+The template demonstrates incrementing a shared on-chain counter on Miden testnet, entirely from the browser via the local WebClient (no wallet required):
 
-1. A **counter account** is deployed as a network account on testnet. This template ships with a live deployment at [`mtst1aqmx7qv6h3y92sqsmunh8uht4ujmfy4j`](https://testnet.midenscan.com/account/mtst1aqmx7qv6h3y92sqsmunh8uht4ujmfy4j).
-2. On button click, the frontend constructs a **public note** targeting the counter and submits it through the MidenFi wallet (the wallet signs and posts the transaction, not the in-browser client).
-3. The **network operator** picks up the note and executes it against the counter account, incrementing the on-chain count.
-4. The frontend polls `client.getAccount(counterAddress)` and re-reads the `StorageMap`; once the value changes it updates the UI. If the network is slow, polling falls back to a 30 s timeout.
+1. A **counter account** — a plain **public, `NoAuth`** account built from `counter-account.masp` — is deployed on testnet. This template ships with a live v0.15 deployment at [`0x4dcaee76ffebfc511e06582702289d`](https://testnet.midenscan.com/account/0x4dcaee76ffebfc511e06582702289d).
+2. On button click the in-browser WebClient creates a throwaway local sender, **publishes** a plain increment note (built from `increment-note.masp`, tag `0`, no attachment) as the sender's own output note, then **consumes** it as the counter (NoAuth ⇒ no signature). Both transactions are proven by the remote testnet prover and submitted by the local client — no wallet involved.
+3. The frontend polls `client.getAccount(counterAddress)` and re-reads the `StorageMap`; once the value advances past the pre-consume baseline it updates the UI (bounded by a 60 s timeout).
 
-> **⚠️ v0.15 status — the increment (write) path is blocked upstream.** The upgrade to SDK v0.15 changed the network-account model and the compiled-artifact format, so the on-chain increment does not currently complete end-to-end. The app still initializes the client, syncs, and **reads** the counter (the read path and the rest of the flow are migrated). Three independent blockers, each detailed under [Known Temporary Workarounds](#known-temporary-workarounds):
-> 1. **No web-SDK way to attach a network-execution target to a custom note.** v0.15 removed `NoteAttachment.newNetworkAccountTarget` and `NoteMetadata.withAttachment`. The `NetworkAccountTarget` attachment itself is still constructible (`NoteAttachment.fromWord(new NoteAttachmentScheme(2), …)`), but the web SDK exposes no way to **attach** a `NoteAttachment` to a *custom-script* note — `NoteMetadata` carries none and the `Note` constructor takes none; only `Note.createP2IDNote/createP2IDENote` accept one. The app therefore disables the increment button and explains why, instead of submitting a transaction that can't succeed.
-> 2. **The shipped `.masp` artifacts are incompatible.** They embed MAST forest version `[0,0,2]` (pre-v0.15); v0.15 rejects anything but `[0,0,3]` at `Package.deserialize`, so they must be rebuilt.
-> 3. **The account/deployment model changed.** `AccountStorageMode::Network` was removed; a v0.15 network account is a public account carrying an `AuthNetworkAccount` allowlist component (which the web SDK cannot yet create), so the live pre-v0.15 deployment likely won't function under v0.15.
+> **✅ v0.15 status — the full increment path works end-to-end in the browser.** Verified live on testnet (clean console, on-chain count advances). Two implementation requirements are baked in and explained in `CLAUDE.md` → "v0.15 Increment Flow": the client runs with `useWorker: false` (so the imported counter is present in the single in-memory SMT forest when the consume transaction is applied), and transactions are submitted with the **remote** prover (`submitNewTransactionWithProver`) so the single thread only pays local execution, not minutes-long local proving.
 
-The `.masp` packages currently in `public/packages/` were built with the pre-v0.15 toolchain (`cargo-miden 0.8.1`) and embed MAST version `[0,0,2]`. **They are not compatible with v0.15** (which requires `[0,0,3]`) and must be rebuilt with a `cargo-miden` toolchain pinned to `miden-core`/`miden-mast-package` 0.23.x — see "Pointing at your own counter" below.
+The `.masp` packages in `public/packages/` (`counter-account.masp`, `increment-note.masp`) are v0.15 builds — MAST version `[0,0,3]`, compiled with `cargo-miden 0.9`. See "Pointing at your own counter" below to rebuild/redeploy against your own counter.
 
 ### Pointing at your own counter
 
@@ -54,15 +50,15 @@ The counter address is resolved at runtime via the `VITE_MIDEN_COUNTER_ADDRESS` 
 
 | `VITE_MIDEN_COUNTER_ADDRESS` value | Effect |
 |---|---|
-| unset / commented out (default) | Use the live testnet counter shipped with the template (`mtst1aqmx7qv6h3y92sqsmunh8uht4ujmfy4j`). |
+| unset / commented out (default) | Use the live v0.15 testnet counter shipped with the template (`0x4dcaee76ffebfc511e06582702289d`). |
 | empty string (`VITE_MIDEN_COUNTER_ADDRESS=`) | Unconfigured — `<Counter>` renders the "address not configured" card and makes no network calls. |
-| any bech32 string (`mtst1...`) | Uses your own deployment. |
+| any account id — hex (`0x…`) or bech32 (`mtst1…`) | Uses your own deployment (resolved via `AccountId.fromHex` / `fromBech32`). |
 
 The slot-name constant is fixed in `src/config.ts` and must match the counter contract's storage map name.
 
 To redeploy (e.g. after modifying contract sources):
 
-> **v0.15 note:** the artifacts and deploy path below are the pre-v0.15 flow. For v0.15 the contracts must be rebuilt with a `cargo-miden` toolchain whose `miden-core` / `miden-mast-package` are 0.23.x, so the `.masp` embeds MAST version `[0,0,3]` (the published `cargo-miden 0.8.1` emits `[0,0,2]`, which v0.15 rejects). The counter must also be (re)deployed as a v0.15 network account — a public account carrying the `AuthNetworkAccount` note-script allowlist component, since `AccountStorageMode::Network` no longer exists. Use the v0.15 `project-template` / contract tooling for the exact deploy command.
+> **v0.15 note:** the shipped `.masp` artifacts are already v0.15 (MAST version `[0,0,3]`, built with `cargo-miden 0.9`). If you rebuild the contracts, use a `cargo-miden 0.9` toolchain so the `.masp` still embeds `[0,0,3]` (older `cargo-miden 0.8.x` emits `[0,0,2]`, which v0.15 rejects at `Package.deserialize`). The counter is a plain **public, `NoAuth`** account (`AccountType::Public` + `NoAuth`) — v0.15 removed the network-account concept (`AccountStorageMode::Network`), so there is no network operator and no note attachment involved; the browser client both publishes and consumes the increment note. Use the v0.15 `project-template` tooling for the exact build + deploy commands.
 
 1. In the [project-template](https://github.com/0xMiden/project-template) repo (on the branch matching your SDK version), run the deployment binary, e.g.:
    ```bash
@@ -115,24 +111,21 @@ Browser-level verification (render correctness, no console errors, wallet popup,
 - **Playwright MCP** for headless render / console checks
 - **Claude in Chrome** (via the `/chrome` command) to exercise the real MidenFi extension
 
-## Known Temporary Workarounds
+## Implementation Notes
 
-Two upstream gaps affect the demo on v0.15: a hard blocker on the on-chain increment (below), and the pre-existing fixed-interval poll. Inline comments in `src/hooks/useIncrementCounter.ts` describe both.
+The on-chain increment works end-to-end on v0.15. Two non-obvious requirements make it work; both are enforced in code and explained inline in `src/hooks/useIncrementCounter.ts` and `src/providers.tsx`.
 
-### v0.15: no web-SDK way to attach a network-execution target to a custom note (blocks the on-chain increment)
+### `useWorker: false` — single SMT forest so the imported counter can be applied
 
-The counter increment builds a **custom-script** note that must carry a *network-account-target* attachment so the network operator executes it against the counter. v0.15 removed both JS APIs the previous flow used — `NoteAttachment.newNetworkAccountTarget(...)` and `NoteMetadata.withAttachment(...)`. In v0.15 the attachment itself is still constructible (`NoteAttachment.fromWord(new NoteAttachmentScheme(2), …)`, scheme id 2 = `NetworkAccountTarget`, or `createNoteAttachment(...)`), but `@miden-sdk/miden-sdk@0.15.2` exposes **no entry point to attach a `NoteAttachment` to a custom-script note**: `NoteMetadata` no longer carries attachments and the `Note` constructor takes none — only `Note.createP2IDNote/createP2IDENote` accept one (and those force the P2ID script, not the increment script). Because the on-chain increment therefore cannot succeed, `src/hooks/useIncrementCounter.ts` gates it behind `INCREMENT_ONCHAIN_BLOCKED` (in `src/config.ts`): the button is disabled with an explanation and **no transaction is submitted** (avoiding a fee-bearing, orphan-note tx the operator can never consume). The note-construction path is kept behind the flag, ready to re-enable once the web SDK adds a custom-note attachment entry point (track: [`0xMiden/web-sdk`](https://github.com/0xMiden/web-sdk)).
+The counter is an **existing** on-chain account this client *imports* (rather than creates), so consuming a note against it applies a *delta* transaction. Under the default worker shim the client keeps two in-memory SMT "forests" — one in the main thread, one in the worker — over the same IndexedDB. `importAccountById` registers only the main-thread forest, but `submitNewTransaction`/`apply_transaction` runs in the worker, whose forest never contains the late-imported counter — so the consume fails with `apply transaction result: storage error: account data wasn't found for account id …`. Running with `useWorker: false` (set on `MidenProvider` in `src/providers.tsx`) collapses this to one thread → one forest, so the imported counter is present when the consume is applied. (Verified against `web-sdk crates/idxdb-store/src/transaction/mod.rs`.)
 
-Two related prerequisites must also be resolved for the demo to work end-to-end on v0.15:
+### Remote proving — keep the single thread off proof generation
 
-- **Rebuild the `.masp` artifacts.** The shipped artifacts embed MAST version `[0,0,2]` and are rejected by v0.15's `Package.deserialize` (which requires `[0,0,3]`). Rebuild with a `cargo-miden` toolchain pinned to `miden-core`/`miden-mast-package` 0.23.x (see "Pointing at your own counter").
-- **Redeploy a v0.15 network account.** `AccountStorageMode::Network` was removed; a v0.15 network account is a public account carrying an `AuthNetworkAccount` note-script allowlist component. The live pre-v0.15 deployment will not behave as a network account under v0.15.
+Because there is no worker, `useIncrementCounter.ts::increment` submits via `client.submitNewTransactionWithProver(id, request, prover)` using `useMiden().prover` (the remote testnet prover derived from `config.prover`). Bare `submitNewTransaction` proves *locally* and single-threaded (minutes), which would freeze the tab; remote proving leaves the main thread only local execution to do.
 
-**To re-enable the increment** once the web SDK lands the attachment API: set `INCREMENT_ONCHAIN_BLOCKED = false` in `src/config.ts`, restore the network-target attachment on the note in `useIncrementCounter.ts::increment`, rebuild + redeploy the artifacts/account, and update `VITE_MIDEN_COUNTER_ADDRESS`.
+### Fixed-interval network poll ([miden-client#2111](https://github.com/0xMiden/miden-client/issues/2111))
 
-### Fixed-interval network poll — waiting for network-operator account updates ([miden-client#2111](https://github.com/0xMiden/miden-client/issues/2111))
-
-After `wallet.requestTransaction` returns, `src/hooks/useIncrementCounter.ts` bounded-polls the counter's storage map until the value changes or a 30 s timeout elapses. The React SDK's `useWaitForCommit` only watches *locally-submitted* transactions — the increment is wallet-submitted and consumed externally by the network operator, so it never reaches the local client's transaction log. [`#2111`](https://github.com/0xMiden/miden-client/issues/2111) tracks a React-SDK subscription primitive for account-state updates driven by external consumers (scoped narrowly from the broader event-system discussion in [`#467`](https://github.com/0xMiden/miden-client/issues/467)).
+After submitting, `increment` bounded-polls the counter's storage map every `NETWORK_POLL_INTERVAL_MS` (2.5 s) until the value advances past the pre-consume baseline or `NETWORK_POLL_TIMEOUT_MS` (60 s) elapses. `useWaitForCommit` doesn't fit cleanly across the publish→commit→consume handoff; [`#2111`](https://github.com/0xMiden/miden-client/issues/2111) tracks a React-SDK subscription primitive for account-state updates (scoped narrowly from the broader event-system discussion in [`#467`](https://github.com/0xMiden/miden-client/issues/467)).
 
 **After #2111 lands a subscription primitive:**
 1. Replace the `while` poll loop in `useIncrementCounter.ts::increment` with the new subscription / waitFor API.

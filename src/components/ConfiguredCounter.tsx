@@ -6,36 +6,22 @@ export function ConfiguredCounter({
 }: {
   counterAddress: string;
 }) {
-  const {
-    increment,
-    incrementBlockedReason,
-    count,
-    isSubmitting,
-    isWaiting,
-    error,
-    walletConnected,
-    explorerUrl,
-  } = useIncrementCounter(counterAddress);
+  const { increment, count, isSubmitting, status, error, explorerUrl } =
+    useIncrementCounter(counterAddress);
 
-  // The write path can be blocked independently of the read path (currently on
-  // Miden SDK v0.15 — see config `INCREMENT_ONCHAIN_BLOCKED`). When blocked we keep
-  // showing the read value but disable the button and explain why, rather than
-  // letting the user click into a guaranteed-failing, fee-bearing transaction.
-  const blocked = incrementBlockedReason !== null;
-  const busy = isSubmitting || isWaiting;
+  // While an increment is in flight the button shows the current step; otherwise
+  // it shows the on-chain count and clicking it runs the increment (publish note
+  // -> counter consumes it). Disabled until the count has been read.
   const buttonLabel = isSubmitting
-    ? "Submitting..."
-    : isWaiting
-      ? "Waiting for network..."
-      : `count is ${count ?? "..."}`;
+    ? (status ?? "Working...")
+    : `count is ${count ?? "..."}`;
 
   return (
     <div className="card">
       <button
         className="counter-button"
         onClick={increment}
-        disabled={blocked || busy || count === null || !walletConnected}
-        title={incrementBlockedReason ?? undefined}
+        disabled={isSubmitting || count === null}
       >
         {buttonLabel}
       </button>
@@ -50,11 +36,6 @@ export function ConfiguredCounter({
         </a>
       </p>
       {error && <p className="error">{error}</p>}
-      {blocked && (
-        <p className="error" role="note">
-          {incrementBlockedReason}
-        </p>
-      )}
     </div>
   );
 }

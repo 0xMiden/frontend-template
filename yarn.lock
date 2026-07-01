@@ -542,17 +542,17 @@
     "@jridgewell/resolve-uri" "^3.1.0"
     "@jridgewell/sourcemap-codec" "^1.4.14"
 
-"@miden-sdk/miden-sdk@0.15.2":
-  version "0.15.2"
-  resolved "https://registry.yarnpkg.com/@miden-sdk/miden-sdk/-/miden-sdk-0.15.2.tgz#c143231769513cc4493711aaa23ff48a7e8c56b9"
-  integrity sha512-0ww0aKrTZlLOpn9TbPnYg5erqE+j5QOqqGBn1ki/ku6iJRvkHyZquQPIz2CWi76AOAnUt+OZLKoMNEZ0X2RFww==
+"@miden-sdk/miden-sdk@0.15.3":
+  version "0.15.3"
+  resolved "https://registry.yarnpkg.com/@miden-sdk/miden-sdk/-/miden-sdk-0.15.3.tgz#8de12bb74a8007017bd64e021979541d9097ce39"
+  integrity sha512-zaP+j4ukT+4x+IeXB/dxsS5TNbIpS8arwnsbqsofju0Phks9iKfYalRfKlsSRhjtHxmoGAe6sy30zdXdSzti+Q==
   dependencies:
     dexie "^4.0.1"
     glob "^11.0.0"
   optionalDependencies:
-    "@miden-sdk/node-darwin-arm64" "0.15.2"
-    "@miden-sdk/node-darwin-x64" "0.15.2"
-    "@miden-sdk/node-linux-x64-gnu" "0.15.2"
+    "@miden-sdk/node-darwin-arm64" "0.15.3"
+    "@miden-sdk/node-darwin-x64" "0.15.3"
+    "@miden-sdk/node-linux-x64-gnu" "0.15.3"
 
 "@miden-sdk/miden-wallet-adapter-base@0.15.1", "@miden-sdk/miden-wallet-adapter-base@^0.15.1":
   version "0.15.1"
@@ -577,32 +577,32 @@
     "@miden-sdk/miden-wallet-adapter-base" "^0.15.1"
     "@miden-sdk/miden-wallet-adapter-miden" "^0.15.1"
 
-"@miden-sdk/node-darwin-arm64@0.15.2":
-  version "0.15.2"
-  resolved "https://registry.yarnpkg.com/@miden-sdk/node-darwin-arm64/-/node-darwin-arm64-0.15.2.tgz#c1724dbb204db0e638ff0d74d9f7ccfa9b71bdb8"
-  integrity sha512-Y4cZjjSImHC1AwAlk+xWp661+3LIIzlHB/1saDCSr4pAvufoMCou2vRRP+l4vwAT+9iDvLwi1iSw2qfybCORiA==
+"@miden-sdk/node-darwin-arm64@0.15.3":
+  version "0.15.3"
+  resolved "https://registry.yarnpkg.com/@miden-sdk/node-darwin-arm64/-/node-darwin-arm64-0.15.3.tgz#9cf55b04b307c7272463c88a09ac1c6ffcf22cbb"
+  integrity sha512-pIhQ0UhbOrbrUP4CaiCqCp+QZx3keeswclqQy4AmPs/EELS6+dSW5Mj0Fgcyi1MdZlpaiuhYyT5JL4gDeFSxkg==
 
-"@miden-sdk/node-darwin-x64@0.15.2":
-  version "0.15.2"
-  resolved "https://registry.yarnpkg.com/@miden-sdk/node-darwin-x64/-/node-darwin-x64-0.15.2.tgz#176d6a47b854d227a5e4212b47d0f172e533ecca"
-  integrity sha512-pxUZpHWCNjClEcEVPDLF4HsFqAQMzoA2PjSjVHSUK8xdcD3F/fiRNIuW+3pYD9gDkvNPGRsJtPLO21R2Rmvskg==
+"@miden-sdk/node-darwin-x64@0.15.3":
+  version "0.15.3"
+  resolved "https://registry.yarnpkg.com/@miden-sdk/node-darwin-x64/-/node-darwin-x64-0.15.3.tgz#5051f97082ea4f1c98ee23027cd265a6f0c01b36"
+  integrity sha512-SamG3/yWpsgiie3RBdh8k8mL1+v7qK+w3N0Zn6+yWNXKWUDNpViTdQ1flkC/QGVjB3aWKlxIyrpYQXj1JEZrlw==
 
-"@miden-sdk/node-linux-x64-gnu@0.15.2":
-  version "0.15.2"
-  resolved "https://registry.yarnpkg.com/@miden-sdk/node-linux-x64-gnu/-/node-linux-x64-gnu-0.15.2.tgz#b5a0e9ea7750e9aed42913430e23e8eaf4509eec"
-  integrity sha512-7ndNrEg+xSmcGb8lDcD/MAYKwXAzjlB6tfL/8fsUvZVgJ5h6ijDIhNCt4JMA40SS736mU7JHlzbTy8uPBwxqFA==
+"@miden-sdk/node-linux-x64-gnu@0.15.3":
+  version "0.15.3"
+  resolved "https://registry.yarnpkg.com/@miden-sdk/node-linux-x64-gnu/-/node-linux-x64-gnu-0.15.3.tgz#326d91e1c4642f1e91c91f72caa643e22635043f"
+  integrity sha512-JLmsiLZzlS24nKD0z6/MFn3UG8Q/4mq29CRmNXzRBW0zXfgnFdctQFv8hL7bOZstWkixpdPdSL95mJ9xCvuITA==
 
-"@miden-sdk/react@0.15.2":
-  version "0.15.2"
-  resolved "https://registry.yarnpkg.com/@miden-sdk/react/-/react-0.15.2.tgz#c5aa6caeb0fb2bd0cd343de26cc10d2305f01332"
-  integrity sha512-L3vxV2QRE+qQ9YPo4VIsCfQ7u12oN0fGp8oRnUGAgSwT1oztHx/rOku02ggAdy1SWQnpe8AiUGiFfC9lNoXkqg==
+"@miden-sdk/react@0.15.3":
+  version "0.15.3"
+  resolved "https://registry.yarnpkg.com/@miden-sdk/react/-/react-0.15.3.tgz#dc0cf237a4d155da1268e125ab0d0013ac3fd421"
+  integrity sha512-s1lm7z2vdabseGDvpFxxfbY6ULz/wQsAAdgj1KAb5rf1aGSyv1imWo27qAE6p7nInRIeYY0VAA6kHGdV2UGtvw==
   dependencies:
     zustand "^5.0.0"
 
-"@miden-sdk/vite-plugin@0.15.2":
-  version "0.15.2"
-  resolved "https://registry.yarnpkg.com/@miden-sdk/vite-plugin/-/vite-plugin-0.15.2.tgz#b6db5fb298a76ec5bf91901ecbd99a07af4d0eab"
-  integrity sha512-55tU2SjA5x9fYHZFKQ/+rM3mhPunUYCqgKsq2sU4hZk+absvmV0Q2ioeiu/C3cjhvmJYO5xqcNSznYaZPnfleg==
+"@miden-sdk/vite-plugin@0.15.3":
+  version "0.15.3"
+  resolved "https://registry.yarnpkg.com/@miden-sdk/vite-plugin/-/vite-plugin-0.15.3.tgz#56ac82f39167aa1cacec4fb6d594b8d6c49787ad"
+  integrity sha512-/lUoF7qqmtPqGLt7IlkgHCK/tF8mtHAGKOx8L9NrAi63bkVD+7Uqmc0KiHmE+m/HdMa1ETSsN3NvfHjVemmhLg==
 
 "@napi-rs/wasm-runtime@^1.1.4":
   version "1.1.4"
