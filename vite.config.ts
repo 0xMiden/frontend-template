@@ -5,6 +5,9 @@ import { midenVitePlugin } from "@miden-sdk/vite-plugin";
 
 export default defineConfig({
   plugins: [react(), midenVitePlugin({ crossOriginIsolation: true })],
+  build: {
+    chunkSizeWarningLimit: 4096,
+  },
   resolve: {
     dedupe: ["react", "react-dom", "react/jsx-runtime"],
     alias: {
