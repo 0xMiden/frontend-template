@@ -123,14 +123,14 @@ The counter is an **existing** on-chain account this client *imports* (rather th
 
 Because there is no worker, `useIncrementCounter.ts::increment` submits via `client.submitNewTransactionWithProver(id, request, prover)` using `useMiden().prover` (the remote testnet prover derived from `config.prover`). Bare `submitNewTransaction` proves *locally* and single-threaded (minutes), which would freeze the tab; remote proving leaves the main thread only local execution to do.
 
-### Fixed-interval network poll ([miden-client#2111](https://github.com/0xMiden/miden-client/issues/2111))
+### Fixed-interval network poll ([web-sdk#107](https://github.com/0xMiden/web-sdk/issues/107))
 
-After submitting, `increment` bounded-polls the counter's storage map every `NETWORK_POLL_INTERVAL_MS` (2.5 s) until the value advances past the pre-consume baseline or `NETWORK_POLL_TIMEOUT_MS` (60 s) elapses. `useWaitForCommit` doesn't fit cleanly across the publish→commit→consume handoff; [`#2111`](https://github.com/0xMiden/miden-client/issues/2111) tracks a React-SDK subscription primitive for account-state updates (scoped narrowly from the broader event-system discussion in [`#467`](https://github.com/0xMiden/miden-client/issues/467)).
+After submitting, `increment` bounded-polls the counter's storage map every `NETWORK_POLL_INTERVAL_MS` (2.5 s) until the value advances past the pre-consume baseline or `NETWORK_POLL_TIMEOUT_MS` (60 s) elapses. `useWaitForCommit` doesn't fit cleanly across the publish→commit→consume handoff; [`web-sdk#107`](https://github.com/0xMiden/web-sdk/issues/107) tracks a React-SDK subscription primitive for account-state updates (scoped narrowly from the broader event-system discussion in [`rust-sdk#467`](https://github.com/0xMiden/rust-sdk/issues/467)).
 
-**After #2111 lands a subscription primitive:**
+**After web-sdk#107 lands a subscription primitive:**
 1. Replace the `while` poll loop in `useIncrementCounter.ts::increment` with the new subscription / waitFor API.
 2. Remove `NETWORK_POLL_INTERVAL_MS` + `NETWORK_POLL_TIMEOUT_MS` from `src/config.ts` if no other consumer depends on them.
-3. Remove the `#2111` TODO block.
+3. Remove the `web-sdk#107` TODO block.
 
 ## AI Developer Experience
 
