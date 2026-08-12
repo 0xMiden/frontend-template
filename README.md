@@ -79,9 +79,9 @@ To redeploy (e.g. after modifying contract sources):
 
 | Package | Version pin | Purpose |
 |---------|-------------|---------|
-| `@miden-sdk/react` | `0.15.2` | React hooks for Miden (useAccount, useSyncState, useMiden, useMidenClient, useTransaction, …) |
-| `@miden-sdk/miden-sdk` | `0.15.2` | Core SDK types (Note, NoteScript, AccountId, Word, Felt, …) |
-| `@miden-sdk/vite-plugin` | `0.15.2` | Vite plugin that handles WASM loading, top-level await, and COOP/COEP |
+| `@miden-sdk/react` | `0.15.3` | React hooks for Miden (useAccount, useSyncState, useMiden, useMidenClient, useTransaction, …) |
+| `@miden-sdk/miden-sdk` | `0.15.3` | Core SDK types (Note, NoteScript, AccountId, Word, Felt, …) |
+| `@miden-sdk/vite-plugin` | `0.15.3` | Vite plugin that handles WASM loading, top-level await, and COOP/COEP |
 | `@miden-sdk/miden-wallet-adapter-react` | `0.15.1` | MidenFi wallet adapter React context + hooks |
 | `@miden-sdk/miden-wallet-adapter-base` | `0.15.1` | `Transaction.createCustomTransaction` helper used by the increment flow |
 
