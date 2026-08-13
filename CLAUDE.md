@@ -196,7 +196,7 @@ The on-chain increment is **not** blocked and needs no note attachment or networ
 
 Common wasm-bindgen gotchas encoded in the hook: pass the **numeric** `AuthScheme` (`AuthRpoFalcon512 = 2`) — the exported `AuthScheme` const is `{Falcon:"falcon", ECDSA:"ecdsa"}`, so `AuthScheme.AuthRpoFalcon512` is `undefined` and hangs `newWallet`; mint a **fresh** `AccountId` per `getConsumableNotes` call (it consumes the id by value); never reuse a `Note` handle after it's been moved into a request.
 
-**Fixed-interval network poll** ([0xMiden/miden-client#2111](https://github.com/0xMiden/miden-client/issues/2111)): after submitting, `increment` bounded-polls the counter's storage map every `NETWORK_POLL_INTERVAL_MS` (2.5 s) until the value advances past the baseline or `NETWORK_POLL_TIMEOUT_MS` (60 s) elapses. `useWaitForCommit` doesn't fit cleanly across the publish→commit→consume handoff; #2111 tracks a React-SDK subscription primitive for account-state updates (narrowed from the broader event-system discussion in #467).
+**Fixed-interval network poll** ([0xMiden/web-sdk#107](https://github.com/0xMiden/web-sdk/issues/107)): after submitting, `increment` bounded-polls the counter's storage map every `NETWORK_POLL_INTERVAL_MS` (2.5 s) until the value advances past the baseline or `NETWORK_POLL_TIMEOUT_MS` (60 s) elapses. `useWaitForCommit` doesn't fit cleanly across the publish→commit→consume handoff; web-sdk#107 tracks a React-SDK subscription primitive for account-state updates (narrowed from the broader event-system discussion in rust-sdk#467).
 
 ## Critical Pitfalls
 
