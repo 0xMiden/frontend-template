@@ -23,3 +23,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Skills are synced from node_modules on install (see the "prepare" script).
+# miden-concepts is committed because it is not published to npm.
+.claude/skills/*
+!.claude/skills/miden-concepts/
