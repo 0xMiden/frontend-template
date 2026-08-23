@@ -228,13 +228,29 @@ For non-developer users building with this template:
 
 ## Miden Skills
 
-For Miden-specific guidance, Claude will auto-load these skills when relevant:
+For Miden-specific guidance, Claude auto-loads these skills when relevant:
 - `react-sdk-patterns` — Complete React SDK hook API reference
 - `testing-patterns` — Test mock factory, fixtures, and TDD conventions
 - `frontend-pitfalls` — All frontend/WASM/browser pitfalls with safe/unsafe examples
-- `miden-concepts` — Miden architecture from a developer perspective
 - `vite-wasm-setup` — Vite + WASM configuration, deployment headers, troubleshooting
 - `signer-integration` — External signer setup (Para, Turnkey, MidenFi)
+- `web-client-usage` — The raw `MidenClient` surface, for what the hooks don't cover
+- `frontend-source-guide` — Reading SDK source for anything the above don't answer
+- `miden-concepts` — Miden architecture from a developer perspective
+
+**All but `miden-concepts` are installed, not committed.** They ship inside the
+`@miden-sdk/*` packages and land in `.claude/skills/` during `yarn install`, via
+the `prepare` script. That means they always match the SDK version in
+`package.json` — bump the SDK and the guidance follows, instead of sitting at
+whatever was committed months earlier.
+
+Nothing to do by hand: `yarn install` populates them. To refresh explicitly, run
+`yarn miden-skills sync`. If `.claude/skills/` looks empty, you have not
+installed dependencies yet.
+
+`miden-concepts` is still committed here, because it describes the protocol
+rather than the SDK and so is not published to npm — it stays canonical in
+[`0xMiden/agent-tools`](https://github.com/0xMiden/agent-tools).
 
 ## General Frontend Skills (Recommended)
 
