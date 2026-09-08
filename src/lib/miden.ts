@@ -1,4 +1,7 @@
-import { Felt, Word } from "@miden-sdk/miden-sdk";
+import { AccountId, Felt, Word } from "@miden-sdk/miden-sdk";
+
+export const parseAccountId = (id: string) =>
+  id.startsWith("0x") ? AccountId.fromHex(id) : AccountId.fromBech32(id);
 
 /** Generate a random 4-felt Word (used as note serial number). */
 export function randomWord(): Word {

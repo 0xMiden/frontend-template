@@ -39,27 +39,28 @@ Only use the WASM client directly via `useMidenClient()` for operations not cove
 ```tsx
 import { MidenProvider } from "@miden-sdk/react";
 import { MidenFiSignerProvider } from "@miden-sdk/miden-wallet-adapter-react";
+import { WalletAdapterNetwork } from "@miden-sdk/miden-wallet-adapter-base";
 
 <MidenProvider
-  config={{ rpcUrl: MIDEN_RPC_URL, prover: MIDEN_PROVER }}
+  config={{ rpcUrl: MIDEN_RPC_URL, prover: MIDEN_PROVER, useWorker: false }}
   loadingComponent={<div className="loading">Loading Miden WASM...</div>}
 >
   <MidenFiSignerProvider
     appName={APP_NAME}
     network={WalletAdapterNetwork.Testnet}
-    autoConnect
+    autoConnect={false}
   >
     <App />
   </MidenFiSignerProvider>
 </MidenProvider>
 ```
 
-> **v0.15 provider order — `MidenProvider` runs OUTSIDE the signer provider.** When a signer provider (`MidenFiSignerProvider`) is an *ancestor* of `MidenProvider`, v0.15 `MidenProvider` treats it as its external keystore and does **not** create the client until the wallet connects (it sees `signerContext.isConnected === false` and returns early). With no wallet connected — before the user connects, or in any environment without the MidenFi extension — the app then hangs forever on "Initializing Miden client…". This template signs entirely through the local `MidenProvider` client — the increment's publish + consume transactions are submitted by the WebClient itself (see the increment flow section below), not the wallet — so `MidenProvider` runs in local-keystore mode (no signer above it → it initializes immediately and the whole increment works without a connected wallet), with `MidenFiSignerProvider` *inside* it purely for the connect button (for apps that additionally want wallet-signed transactions). If instead you DO want `MidenProvider` to sign via the wallet, put the signer provider above it — but then gate your UI on `useMiden().isReady` / signer connection (show a "connect" screen), don't expect the client before the wallet connects. (This init-gating behavior is undocumented in the migration guide; verified against `web-sdk` `packages/react-sdk/src/context/MidenProvider.tsx`.)
+> **v0.16 provider order — `MidenProvider` runs OUTSIDE the signer provider.** When a signer provider (`MidenFiSignerProvider`) is an *ancestor* of `MidenProvider`, v0.16 `MidenProvider` treats it as its external keystore and does **not** create the client until the wallet connects (it sees `signerContext.isConnected === false` and returns early). With no wallet connected — before the user connects, or in any environment without the MidenFi extension — the app then hangs forever on "Initializing Miden client…". This template signs entirely through the local `MidenProvider` client — the increment's publish + consume transactions are submitted by the WebClient itself (see the increment flow section below), not the wallet — so `MidenProvider` runs in local-keystore mode (no signer above it → it initializes immediately and the whole increment works without a connected wallet), with `MidenFiSignerProvider` *inside* it purely for the connect button (for apps that additionally want wallet-signed transactions). If instead you DO want `MidenProvider` to sign via the wallet, put the signer provider above it — but then gate your UI on `useMiden().isReady` / signer connection (show a "connect" screen), don't expect the client before the wallet connects. (This init-gating behavior is undocumented in the migration guide; verified against `web-sdk` `packages/react-sdk/src/context/MidenProvider.tsx`.)
 
 ### Query Hooks
 Each returns its own result shape plus `isLoading`, `error`, `refetch`:
 ```tsx
-const { accounts } = useAccounts();           // wallets is @deprecated (mirrors accounts); faucets is @deprecated and always empty in v0.15 — detect faucets per-account from components
+const { accounts } = useAccounts();           // wallets is @deprecated (mirrors accounts); faucets is @deprecated and always empty — detect faucets per-account from components
 const { account, assets, getBalance } = useAccount(accountId);
 const { notes, consumableNotes } = useNotes();
 const { syncHeight, sync } = useSyncState();
@@ -154,8 +155,8 @@ Frontend loads pre-compiled `.masp` packages from `public/packages/` at runtime.
 ### Artifact location
 ```
 public/packages/
-├── counter_account.masp    # Counter account component
-└── increment_note.masp     # Increment note script
+├── counter-account.masp    # Counter account component
+└── increment-note.masp     # Increment note script
 ```
 
 ### Building artifacts
@@ -169,34 +170,44 @@ cargo miden build --release
 ```bash
 .claude/hooks/check-artifacts.sh
 ```
-Note: this hook only checks that `.masp` files are present and non-trivial in size — it does **not** validate the MASP/MAST format version, so it will not catch a pre-v0.15 ↔ v0.15 mismatch.
+Note: this hook only checks that `.masp` files are present and non-trivial in size — it does **not** validate the MASP/MAST format version, so it will not catch a v0.15 ↔ v0.16 mismatch.
 
-### v0.15 compatibility
-The `.masp` files shipped in `public/packages/` are pre-v0.15 builds: they embed MAST forest version `[0,0,2]`, which v0.15's `Package.deserialize` rejects (it requires `[0,0,3]`). They must be rebuilt with a `cargo-miden` toolchain whose `miden-core`/`miden-mast-package` are 0.23.x. Older MAST artifacts do not round-trip to v0.15.
+### v0.16 compatibility
+Build both packages with a toolchain compatible with v0.16 in the separate contract project, then replace the frontend artifacts together. Deploy a public counter with current NoAuth + BasicWallet components and configure `VITE_MIDEN_COUNTER_ADDRESS`; no default v0.16 deployment is bundled.
+
+After a chain reset, use a fresh browser origin/profile; old IndexedDB genesis state is incompatible. Do not silently clear databases or keys. The React SDK MidenProvider does not expose a `storeName` option for local clients.
 
 ### Failure recovery
 - **Missing artifacts**: Build contracts with `cargo miden build` or ask the PM to supply the `.masp` files
 - **Stale artifacts**: Rebuild and re-copy after contract changes
-- **Deserialization failure at runtime**: Version mismatch — rebuild contracts with a `cargo-miden` toolchain matching the `@miden-sdk/miden-sdk` version in `package.json` (for v0.15, one that emits MAST version `[0,0,3]`)
+- **Deserialization failure at runtime**: Version mismatch — rebuild contracts with a `cargo-miden` toolchain matching the `@miden-sdk/miden-sdk` version in `package.json` (v0.16 for this template)
 
-## v0.15 Increment Flow (works end-to-end)
+## v0.16 Increment Flow
 
-The on-chain increment is **not** blocked and needs no note attachment or network operator. The counter is a plain **public, `NoAuth`** account (built from `counter-account.masp` with `AccountType::Public` + `NoAuth` — *not* a network account; v0.15 removed the network-account concept and `AccountStorageMode::Network`). `useIncrementCounter.ts::increment` mirrors the project-template `increment_count` reference as a two-transaction flow submitted entirely by the **local WebClient** (no wallet involved):
+The counter combines **public NoAuth + BasicWallet + the compiled counter component**. NoAuth still pays fees, and BasicWallet is required to receive P2ID funding. This publicly writable demo must only hold test tokens.
 
-1. Create a throwaway local sender wallet (`client.newWallet(AccountStorageMode.private(), 2 /* AuthRpoFalcon512 */, undefined)`).
-2. Build a plain increment note from `increment-note.masp` (`Package.deserialize` → `NoteScript.fromPackage` → `NoteRecipient`/`NoteMetadata(sender.id(), NoteType.Public, new NoteTag(0))`/`Note`) — **no** `NoteAttachment`, tag `0`. Capture `note.id()` *before* publishing (wasm-bindgen moves value-class args).
-3. Publish it as the sender's own output note (`TransactionRequestBuilder().withOwnOutputNotes(new NoteArray([note])).build()` → submit as the sender).
-4. Re-import the counter (`client.importAccountById(counterId)`, unconditional) and read the current on-chain count as the baseline.
-5. When the note is consumable (`getConsumableNotes(counterId)`), rebuild fresh `Note`s from the records (`record.inputNoteRecord().toNote()`, filtered to our `note.id()`) and consume them as the counter (`newConsumeTransactionRequest` → submit as `counterId`). NoAuth ⇒ no signature.
+1. Restore the local sender from SDK settings or create it with `useCreateWallet`; persist its ID so fee balances survive reloads.
+2. Call `fundAccounts` from `src/lib/funding.ts` to read the chain's verification base fee and fee faucet ID. If sender or counter balance is below 256 base-fee units, look for an available P2ID note containing the fee asset before requesting more tokens. Otherwise request public faucet tokens, verify the faucet asset, solve PoW, and consume the funding note. Preserve known note IDs for retries. Read an existing consumption ID from the SDK before trusting an optimistic balance, and check the resulting balance after commitment.
+3. Build the compiled increment note and capture its ID before ownership moves into the request. Build a fee-aware request and publish it with `useTransaction`.
+4. Wait for transaction commitment; re-import the public counter and discover the exact increment note by ID.
+5. Consume the exact note ID with `useConsume`. Await `useWaitForCommit` before reading and displaying the updated count.
+
+Funding behavior is unit-tested; also verify the complete increment flow on a fee-enabled network. `outputNotes()` includes the fee note on fee-enabled chains; never use output index 0 to identify a user note.
 
 ### Two hard-won requirements (don't regress these)
 
 - **`useWorker: false` on `MidenProvider`** (`src/providers.tsx`). The default worker shim keeps *two* in-memory SMT forests (main + worker) over one IndexedDB; `importAccountById` registers only the main forest while `submitNewTransaction`/`apply_transaction` runs in the worker. Consuming against an **imported** (nonce>0) account applies a *delta* transaction, whose apply path looks the account up in the executing instance's forest — which under the worker never contains the late-imported counter, failing with `apply transaction result: storage error: account data wasn't found for account id …`. One thread → one forest → apply succeeds. (Verified against `web-sdk crates/idxdb-store/src/transaction/mod.rs`.)
-- **Remote prover for submits.** `increment` submits via `client.submitNewTransactionWithProver(id, request, prover)` using `useMiden().prover` (the remote testnet prover from `config.prover`). Bare `submitNewTransaction` proves *locally* and single-threaded (minutes), which with `useWorker:false` would freeze the tab. Remote proving keeps the main thread to local execution only.
+- **Remote prover for submits.** `useTransaction` and `useConsume` use the provider's prover configuration. Keep remote proving enabled for the browser counter.
 
-Common wasm-bindgen gotchas encoded in the hook: pass the **numeric** `AuthScheme` (`AuthRpoFalcon512 = 2`) — the exported `AuthScheme` const is `{Falcon:"falcon", ECDSA:"ecdsa"}`, so `AuthScheme.AuthRpoFalcon512` is `undefined` and hangs `newWallet`; mint a **fresh** `AccountId` per `getConsumableNotes` call (it consumes the id by value); never reuse a `Note` handle after it's been moved into a request.
+Use `useCreateWallet({ storageMode: "private", authScheme: 2 })`: the explicit numeric Falcon discriminant avoids the installed SDK's invalid default. Keep the existing SDK settings key to recover funded senders across reloads.
 
-**Fixed-interval network poll** ([0xMiden/miden-client#2111](https://github.com/0xMiden/miden-client/issues/2111)): after submitting, `increment` bounded-polls the counter's storage map every `NETWORK_POLL_INTERVAL_MS` (2.5 s) until the value advances past the baseline or `NETWORK_POLL_TIMEOUT_MS` (60 s) elapses. `useWaitForCommit` doesn't fit cleanly across the publish→commit→consume handoff; #2111 tracks a React-SDK subscription primitive for account-state updates (narrowed from the broader event-system discussion in #467).
+SDK mutation hooks acquire `runExclusive` themselves; never wrap those hooks in another lock. The installed `useWaitForCommit` does not lock internally, so wrap that wait. Direct client calls must also be serialized.
+
+Keep this template's publish/consume flow simple: do not add a persistent pending-operation state machine or resume UI unless requested. Keep the local sender ID and returned funding note ID in SDK settings. Timeouts do not cancel submissions; recovery of the whole operation across retries or reloads is outside this example's scope.
+
+Keep all funding logic, including HTTP/PoW, in `src/lib/funding.ts`, behind `fundAccounts` so a future SDK method can replace it. Avoid additional hooks or recovery abstractions. If an HTTP request fails, sync and check for an issued funding note before surfacing the error. Reuse available funding on subsequent attempts, selecting only standard P2ID notes with the chain's fee asset. `useMint` executes the issuer's faucet account; it does not request tokens from the public faucet HTTP API.
+
+Keep bounded polling for the exact funding/increment note IDs. `useWaitForNotes` cannot filter by ID and reuses a moved WASM AccountId across polls. `useSessionAccount` consumes all available notes with local proving; it does not fit this flow's targeted consumption and existing sender recovery. After transaction commitment, sync and read the count directly.
 
 ## Critical Pitfalls
 
