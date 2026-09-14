@@ -64,7 +64,7 @@ const { accounts } = useAccounts();           // wallets is @deprecated (mirrors
 const { account, assets, getBalance } = useAccount(accountId);
 const { notes, consumableNotes } = useNotes();
 const { syncHeight, sync } = useSyncState();
-const { assetMetadata } = useAssetMetadata(faucetId);
+const { assetMetadata } = useAssetMetadata([faucetId]);
 ```
 
 ### Mutation Hooks
@@ -215,7 +215,7 @@ Keep bounded polling for the exact funding/increment note IDs. `useWaitForNotes`
 
 **Recursive WASM access crashes**: Never call client methods concurrently. Use `runExclusive()` from `useMiden()` for sequential execution. Built-in hooks handle this automatically.
 
-**COOP/COEP headers required**: WASM SharedArrayBuffer needs `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` in vite.config.ts AND production server.
+**COOP/COEP for multi-threaded WASM**: The SDK's default single-threaded build does not require isolation headers. The `/mt` build uses SharedArrayBuffer and requires `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` in development and production. This template already opts into those headers in `vite.config.ts`.
 
 **Token amounts are bigint, not number**: `send({ amount: 1000 })` will fail. Use `amount: 1000n` or `parseAssetAmount("10", 8)`.
 
@@ -239,13 +239,17 @@ For non-developer users building with this template:
 
 ## Miden Skills
 
+The eight bundled skills mirror [agent-tools PR #17](https://github.com/0xMiden/agent-tools/pull/17) at commit `8186d487f19f1181facbb31ca6ee54ed251b5c94`. Use them for SDK APIs; the tutorial-specific configuration and increment flow above take precedence over generic examples.
+
 For Miden-specific guidance, Claude will auto-load these skills when relevant:
 - `react-sdk-patterns` — Complete React SDK hook API reference
+- `web-client-usage` — Standalone client resources and low-level API boundaries
 - `testing-patterns` — Test mock factory, fixtures, and TDD conventions
 - `frontend-pitfalls` — All frontend/WASM/browser pitfalls with safe/unsafe examples
 - `miden-concepts` — Miden architecture from a developer perspective
 - `vite-wasm-setup` — Vite + WASM configuration, deployment headers, troubleshooting
 - `signer-integration` — External signer setup (Para, Turnkey, MidenFi)
+- `frontend-source-guide` — Source lookup for advanced frontend work
 
 ## General Frontend Skills (Recommended)
 

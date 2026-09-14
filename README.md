@@ -133,3 +133,5 @@ All funding logic lives in `src/lib/funding.ts`, behind `fundAccounts`, ready to
 ## AI Developer Experience
 
 This template ships with `.claude/` skills for AI coding tools. Skills cover React SDK patterns, frontend pitfalls, Vite + WASM setup, signer integration, testing patterns, and Miden architecture. See `CLAUDE.md` for the full developer guide.
+
+The eight bundled skills are synced from [agent-tools PR #17](https://github.com/0xMiden/agent-tools/pull/17) at commit [`8186d487`](https://github.com/0xMiden/agent-tools/tree/8186d487f19f1181facbb31ca6ee54ed251b5c94/skills). They provide shared SDK guidance; `CLAUDE.md` documents this tutorial's configuration and increment flow.
