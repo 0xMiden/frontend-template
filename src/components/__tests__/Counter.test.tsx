@@ -21,6 +21,7 @@ describe("Counter gate", () => {
   });
 
   it("renders ConfiguredCounter when COUNTER_ADDRESS is set", () => {
+    vi.spyOn(config, "COUNTER_ADDRESS", "get").mockReturnValue("0xconfigured");
     render(<Counter />);
     const configured = screen.getByTestId("configured-counter");
     expect(configured).toBeInTheDocument();
