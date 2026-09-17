@@ -4,10 +4,10 @@ import { MidenFiSignerProvider } from "@miden-sdk/miden-wallet-adapter-react";
 import { WalletAdapterNetwork } from "@miden-sdk/miden-wallet-adapter-base";
 import { APP_NAME, MIDEN_RPC_URL, MIDEN_PROVER } from "@/config";
 
-// v0.15 provider order — MidenProvider runs OUTSIDE the signer provider.
+// v0.16 provider order — MidenProvider runs OUTSIDE the signer provider.
 //
 // When a signer provider (MidenFiSignerProvider) is an *ancestor* of MidenProvider,
-// v0.15 MidenProvider treats it as its external keystore and intentionally does NOT
+// v0.16 MidenProvider treats it as its external keystore and intentionally does NOT
 // create the WebClient until that signer connects (it sees `signerContext.isConnected
 // === false` and returns early). With a wallet that hasn't connected — e.g. before the
 // user connects, or in any environment without the MidenFi extension — the app would
@@ -17,7 +17,7 @@ import { APP_NAME, MIDEN_RPC_URL, MIDEN_PROVER } from "@/config";
 //
 // This template signs entirely through the local MidenProvider client, not the
 // wallet: the increment's two transactions (publish the increment note from a
-// throwaway local sender, then consume it as the NoAuth counter) are submitted by
+// persisted local sender, then consume it as the NoAuth counter) are submitted by
 // the WebClient itself (see useIncrementCounter), mirroring the project-template
 // `increment_count` reference. So we run MidenProvider in local-keystore mode (no
 // signer above it → it initializes immediately and the full increment works

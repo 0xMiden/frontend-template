@@ -1,9 +1,23 @@
+import { webcrypto } from "node:crypto";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
-const mockFetch = vi.fn(async () => ({
-  arrayBuffer: async () => new ArrayBuffer(0),
-}));
+const chain = vi.hoisted(() => ({ baseFee: 0, balance: 0n }));
+const mockFunding = vi.hoisted(() => vi.fn());
+const fundingNoteId = (id: string) => `0x${(id === "0xsender" ? "11" : "22").repeat(32)}`;
+
+const mockFetch = vi.fn(async (url: string) => {
+  if (url.startsWith("https://faucet-api.")) {
+    const { pathname, searchParams } = new URL(url);
+    const json = async () => {
+      if (pathname === "/get_metadata") return { id: "0xfee", base_amount: 100000000 };
+      if (pathname === "/pow") return { challenge: "ab", target: String(1n << 64n) };
+      return { note_id: await mockFunding(searchParams.get("account_id")) };
+    };
+    return { ok: true, json };
+  }
+  return { ok: true, arrayBuffer: async () => new ArrayBuffer(0) };
+});
 vi.stubGlobal("fetch", mockFetch);
 
 vi.mock("@miden-sdk/react", () => import("@/__tests__/mocks/miden-sdk-react"));
@@ -29,6 +43,9 @@ vi.mock("@miden-sdk/miden-sdk", async () => {
   const exports: Record<string, unknown> = {};
   for (const k of [
     "TransactionRequestBuilder",
+    "TransactionFilter",
+    "TransactionId",
+    "Endpoint",
     "Package",
     "NoteScript",
     "Note",
@@ -48,135 +65,284 @@ vi.mock("@miden-sdk/miden-sdk", async () => {
   ]) {
     exports[k] = stub();
   }
+  exports.RpcClient = class {
+    free() {}
+    async getBlockHeaderByNumber() { return { feeFaucetId: () => ({ toString: () => "0xfee" }), verificationBaseFee: () => chain.baseFee }; }
+  };
+  exports.AccountId = { fromHex: (id: string) => ({ toString: () => id }), fromBech32: (id: string) => ({ toString: () => id }) };
+  exports.NoteScript = { fromPackage: () => stub(), p2id: () => ({ root: () => ({ toHex: () => "p2id" }) }) };
   return exports;
 });
 
-vi.mock("@/lib/miden", () => ({ randomWord: () => ({}) }));
+vi.mock("@/lib/miden", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/miden")>(), randomWord: () => ({}),
+}));
 
-import { useMiden, useMidenClient } from "@miden-sdk/react";
+import { useMiden, useMidenClient, useCreateWallet, useConsume, useTransaction, useWaitForCommit } from "@miden-sdk/react";
 import { useIncrementCounter } from "../useIncrementCounter";
 
-const COUNTER_ADDRESS = "0x4dcaee76ffebfc511e06582702289d";
-
-// A stub Account whose stored count reads from a mutable holder.
-const accountWithCount = (holder: { n: number }) =>
-  ({
-    storage: () => ({
-      getMapItem: () => ({ toU64s: () => [BigInt(holder.n), 0n, 0n, 0n] }),
-    }),
-    id: () => ({ toString: () => "0xsender" }),
-  }) as never;
-
-const mockImportAccountById = vi.fn(async () => undefined);
-const mockSyncState = vi.fn(async () => undefined);
-const mockNewWallet = vi.fn();
-const mockSubmitNewTransaction = vi.fn(async () => ({ toHex: () => "0xtx" }));
-// A consumable record whose `inputNoteRecord().toNote().id().toString()` matches
-// the published note's id ("STUB_NOTE_ID"), so the hook's id filter keeps it.
-const fakeConsumableRecord = {
-  inputNoteRecord: () => ({
-    toNote: () => ({ id: () => ({ toString: () => "STUB_NOTE_ID" }) }),
-  }),
+const COUNTER_ADDRESS = "0xcounter";
+const settings = new Map<string, number[]>();
+const balances = new Map<string, bigint>();
+let fundingAmount = 100000000n;
+const holder = { n: 3 };
+let locked = false;
+const exclusive = async <T,>(fn: () => Promise<T>): Promise<T> => {
+  if (locked) throw new Error("Nested SDK lock");
+  locked = true;
+  try { return await fn(); } finally { locked = false; }
 };
-const mockGetConsumableNotes = vi.fn(async () => [fakeConsumableRecord]);
-const mockNewConsumeTransactionRequest = vi.fn(() => ({}));
+const account = (id = "0xsender") => ({
+  storage: () => ({ getMapItem: () => ({ toU64s: () => [BigInt(holder.n), 0n, 0n, 0n] }) }),
+  vault: () => ({ getBalance: () => balances.get(id) ?? chain.balance }),
+  id: () => ({ toString: () => id }),
+});
+const record = (id: string, faucetId?: string, script = "p2id") => ({
+  inputNoteRecord: () => ({ toNote: () => ({
+    id: () => ({ toString: () => id }),
+    script: () => ({ root: () => ({ toHex: () => script }) }),
+    assets: () => ({ fungibleAssets: () => faucetId ? [{
+      faucetId: () => ({ toString: () => faucetId }), amount: () => 100000000n,
+    }] : [] }),
+  }) }),
+});
+const getAccount = vi.fn(async (id: { toString(): string }) => account(id.toString()));
+const getConsumableNotes = vi.fn(async () => [record("STUB_NOTE_ID")]);
+const inputRecord = () => ({ inclusionProof: () => ({}), isConsumed: () => false,
+  isProcessing: () => false, consumerTransactionId: (): string | undefined => undefined });
+const fundingRecords = new Map<string, ReturnType<typeof inputRecord>>();
+const getInputNote = vi.fn(async (id: string) => fundingRecords.get(id) ?? inputRecord());
+const createWallet = vi.fn(async () => exclusive(async () => account()));
+const execute = vi.fn<(options: unknown) => Promise<{ transactionId: string }>>(async () => exclusive(async () => ({ transactionId: "publish" })));
+const consume = vi.fn(async ({ accountId, notes }: { accountId: string; notes: string[] }) =>
+  exclusive(async () => {
+    if (notes[0] === fundingNoteId(accountId)) {
+      const transactionId = `funding:${accountId}`;
+      fundingRecords.set(notes[0], { ...inputRecord(), isProcessing: () => true,
+        consumerTransactionId: () => transactionId });
+      return { transactionId };
+    }
+    return { transactionId: "consume" };
+  }));
+const waitForCommit = vi.fn<(id: unknown) => Promise<void>>(async () => undefined);
+const client = {
+  getAccount,
+  getConsumableNotes,
+  getInputNote,
+  importAccountById: vi.fn(async () => undefined),
+  syncState: vi.fn(async () => undefined),
+  getSetting: vi.fn(async (key: string) => settings.get(key)),
+  setSetting: vi.fn(async (key: string, value: number[]) => { settings.set(key, value); }),
+  removeSetting: vi.fn(async (key: string) => { settings.delete(key); }),
+  feeAwareTransactionRequestBuilder: vi.fn(async () => ({
+    withOwnOutputNotes: () => ({ build: () => ({}) }),
+  })),
+};
+
+async function setup() {
+  const hook = renderHook(() => useIncrementCounter(COUNTER_ADDRESS));
+  await waitFor(() => expect(hook.result.current.count).toBe(3));
+  return hook;
+}
 
 describe("useIncrementCounter", () => {
   beforeEach(() => {
-    vi.useRealTimers();
     vi.clearAllMocks();
-
+    vi.stubGlobal("crypto", webcrypto);
+    settings.clear();
+    balances.clear();
+    fundingRecords.clear();
+    fundingAmount = 100000000n;
+    locked = false;
+    holder.n = 3;
+    chain.baseFee = 0;
+    chain.balance = 0n;
+    getAccount.mockImplementation(async (id) => account(id.toString()));
+    getConsumableNotes.mockResolvedValue([record("STUB_NOTE_ID")]);
+    getInputNote.mockImplementation(async (id) => fundingRecords.get(id) ?? inputRecord());
+    waitForCommit.mockImplementation(async (id) => {
+      expect(locked).toBe(true); // This SDK wait hook doesn't lock its WASM calls.
+      if (id === "consume") holder.n = 4;
+      if (typeof id === "string" && id.startsWith("funding:")) {
+        const accountId = id.slice("funding:".length);
+        balances.set(accountId, fundingAmount);
+        fundingRecords.set(fundingNoteId(accountId), { ...inputRecord(), isConsumed: () => true });
+      }
+    });
+    mockFunding.mockImplementation(async (id: string) => fundingNoteId(id));
     vi.mocked(useMiden).mockReturnValue({
-      client: null,
-      isReady: true,
-      isInitializing: false,
-      error: null,
-      sync: vi.fn(),
-      runExclusive: <T,>(fn: () => Promise<T>) => fn(),
-      prover: null,
-      signerAccountId: null,
-      signerConnected: null,
+      client: null, isReady: true, isInitializing: false, error: null,
+      sync: vi.fn(), runExclusive: exclusive, prover: null,
+      signerAccountId: null, signerConnected: null,
     });
+    vi.mocked(useMidenClient).mockReturnValue(client as unknown as ReturnType<typeof useMidenClient>);
+    vi.mocked(useCreateWallet).mockReturnValue({ createWallet } as unknown as ReturnType<typeof useCreateWallet>);
+    vi.mocked(useConsume).mockReturnValue({ consume } as unknown as ReturnType<typeof useConsume>);
+    vi.mocked(useTransaction).mockReturnValue({ execute } as unknown as ReturnType<typeof useTransaction>);
+    vi.mocked(useWaitForCommit).mockReturnValue({ waitForCommit });
   });
 
-  it("loads the counter value from on-chain storage (read path)", async () => {
-    const holder = { n: 7 };
-    vi.mocked(useMidenClient).mockReturnValue({
-      getAccount: vi.fn(async () => accountWithCount(holder)),
-      importAccountById: mockImportAccountById,
-      syncState: mockSyncState,
-    } as unknown as ReturnType<typeof useMidenClient>);
-
-    const { result } = renderHook(() => useIncrementCounter(COUNTER_ADDRESS));
-    await waitFor(() => expect(result.current.count).toBe(7));
-    expect(result.current.error).toBeNull();
+  it("loads the counter and reports an unreachable account", async () => {
+    const hook = await setup();
+    expect(hook.result.current.error).toBeNull();
+    hook.unmount();
+    getAccount.mockResolvedValue(null as never);
+    const missing = renderHook(() => useIncrementCounter(COUNTER_ADDRESS));
+    await waitFor(() => expect(missing.result.current.error).toMatch(/counter account not found/i));
+    expect(missing.result.current.count).toBeNull();
   });
 
-  it("surfaces an error when the counter account is unreachable on-chain", async () => {
-    vi.mocked(useMidenClient).mockReturnValue({
-      getAccount: vi.fn(async () => null),
-      importAccountById: mockImportAccountById,
-      syncState: mockSyncState,
-    } as unknown as ReturnType<typeof useMidenClient>);
+  it.each([{ baseFee: 0, balance: 0n }, { baseFee: 7, balance: 28n }, { baseFee: 7, balance: 999999n }])(
+    "uses SDK transactions with fee rate $baseFee and balance $balance", async (fees) => {
+      Object.assign(chain, fees);
+      const { result } = await setup();
+      await act(async () => {
+        const first = result.current.increment();
+        await result.current.increment();
+        await first;
+      });
+      expect(result.current.error).toBeNull();
+      expect(result.current.count).toBe(4);
+      expect(createWallet).toHaveBeenCalledOnce();
+      expect(createWallet).toHaveBeenCalledWith({ storageMode: "private", authScheme: 2 });
+      expect(execute).toHaveBeenCalledOnce();
+      expect(consume).toHaveBeenLastCalledWith({ accountId: COUNTER_ADDRESS, notes: ["STUB_NOTE_ID"] });
+      expect(waitForCommit).toHaveBeenCalledWith("publish", expect.objectContaining({ timeoutMs: 60000 }));
+      const funded = fees.baseFee > 0 && fees.balance < BigInt(fees.baseFee) * 256n;
+      expect(mockFunding).toHaveBeenCalledTimes(funded ? 2 : 0);
+      expect(consume).toHaveBeenCalledTimes(funded ? 3 : 1);
+      expect(waitForCommit).toHaveBeenCalledTimes(funded ? 4 : 2);
+    },
+  );
 
-    const { result } = renderHook(() => useIncrementCounter(COUNTER_ADDRESS));
-    await waitFor(() =>
-      expect(result.current.error).toMatch(/counter account not found/i),
-    );
-    expect(result.current.count).toBeNull();
+  it("stops if publishing is discarded or never commits", async () => {
+    waitForCommit.mockRejectedValueOnce(new Error("Transaction was discarded before commit"));
+    const { result } = await setup();
+    await act(async () => { await result.current.increment(); });
+    expect(consume).not.toHaveBeenCalled();
+    expect(result.current.count).toBe(3);
+    expect(result.current.error).toContain("discarded");
+    expect(result.current.isSubmitting).toBe(false);
   });
 
-  it("increments by publishing the note then consuming it as the counter", async () => {
-    const holder = { n: 3 };
-    // The counter's count advances only after a consume tx is submitted against it.
-    mockSubmitNewTransaction.mockImplementation(async () => {
-      holder.n += 1; // simulate the on-chain effect on consume/publish
-      return { toHex: () => "0xtx" } as never;
-    });
-    // Reset holder bump: only the consume (2nd submit) should reflect the count
-    // change we assert on; both publish+consume call submit, which is fine here.
-    vi.mocked(useMidenClient).mockReturnValue({
-      getAccount: vi.fn(async () => accountWithCount(holder)),
-      importAccountById: mockImportAccountById,
-      syncState: mockSyncState,
-      newWallet: mockNewWallet.mockResolvedValue({
-        id: () => ({ toString: () => "0xsender" }),
-      }),
-      submitNewTransaction: mockSubmitNewTransaction,
-      getConsumableNotes: mockGetConsumableNotes,
-      newConsumeTransactionRequest: mockNewConsumeTransactionRequest,
-    } as unknown as ReturnType<typeof useMidenClient>);
-
-    const { result } = renderHook(() => useIncrementCounter(COUNTER_ADDRESS));
-    await waitFor(() => expect(result.current.count).toBe(3));
-
+  it("waits for its own note even when unrelated notes are available", async () => {
+    getConsumableNotes.mockResolvedValueOnce([record("unrelated-note")]);
+    const { result } = await setup();
     vi.useFakeTimers();
     try {
-      let p: Promise<void> | undefined;
-      await act(async () => {
-        p = result.current.increment();
-        await Promise.resolve();
-      });
-      // Fast-forward through the publish-commit and confirm wait loops.
-      for (let i = 0; i < 40 && result.current.isSubmitting; i++) {
-        await act(async () => {
-          await vi.advanceTimersByTimeAsync(2_600);
-        });
-      }
-      await act(async () => {
-        await p;
-      });
-    } finally {
-      vi.useRealTimers();
-    }
+      let pending: Promise<void>;
+      await act(async () => { pending = result.current.increment(); });
+      expect(consume).not.toHaveBeenCalled();
+      await act(async () => { await vi.advanceTimersByTimeAsync(2500); await pending; });
+      expect(consume).toHaveBeenCalledWith({ accountId: COUNTER_ADDRESS, notes: ["STUB_NOTE_ID"] });
+    } finally { vi.useRealTimers(); }
+  });
 
-    // A local sender was created, the note was published and then consumed:
-    expect(mockNewWallet).toHaveBeenCalledTimes(1);
-    expect(mockNewConsumeTransactionRequest).toHaveBeenCalledTimes(1);
-    // submitNewTransaction is called at least twice (publish + consume).
-    expect(mockSubmitNewTransaction.mock.calls.length).toBeGreaterThanOrEqual(2);
-    // The observed count advanced past the starting value.
-    expect(result.current.count).toBeGreaterThan(3);
+  it("recovers an existing sender after remount", async () => {
+    const first = await setup();
+    await act(async () => { await first.result.current.increment(); });
+    first.unmount();
+    holder.n = 3;
+    const second = await setup();
+    await act(async () => { await second.result.current.increment(); });
+    expect(createWallet).toHaveBeenCalledOnce();
+  });
+
+  it("preserves a minted funding note after timeout and resumes without minting again", async () => {
+    chain.baseFee = 7;
+    waitForCommit.mockRejectedValueOnce(new Error("Timeout waiting for transaction commit"));
+    const first = await setup();
+    await act(async () => { await first.result.current.increment(); });
+    expect(execute).not.toHaveBeenCalled();
+    expect(settings.has("counter:funding:0xsender")).toBe(true);
+    first.unmount();
+    const second = await setup();
+    await act(async () => { await second.result.current.increment(); });
+    expect(second.result.current.error).toBeNull();
+    expect(mockFunding).toHaveBeenCalledTimes(2); // sender once, counter once
+    expect(settings.has("counter:funding:0xsender")).toBe(false);
+  });
+
+  it("stops before publishing when the faucet fails", async () => {
+    chain.baseFee = 7;
+    mockFunding.mockRejectedValueOnce(new Error("Faucet HTTP 500"));
+    const { result } = await setup();
+    await act(async () => { await result.current.increment(); });
+    expect(result.current.error).toContain("HTTP 500");
+    expect(execute).not.toHaveBeenCalled();
+    expect(consume).not.toHaveBeenCalled();
+    expect(result.current.isSubmitting).toBe(false);
+  });
+
+  it("stops if consuming the funding note leaves less than the fee reserve", async () => {
+    chain.baseFee = 7;
+    fundingAmount = 10n;
+    const { result } = await setup();
+    await act(async () => { await result.current.increment(); });
+    expect(result.current.error).toMatch(/insufficient.*fee/i);
+    expect(execute).not.toHaveBeenCalled();
+    expect(mockFunding).toHaveBeenCalledOnce();
+    expect(settings.has("counter:funding:0xsender")).toBe(false);
+  });
+
+  it("uses the SDK's funding consumption ID before trusting an optimistic balance", async () => {
+    chain.baseFee = 7;
+    waitForCommit.mockRejectedValueOnce(new Error("Timeout waiting for transaction commit"));
+    const { result } = await setup();
+    await act(async () => { await result.current.increment(); });
+    balances.set("0xsender", fundingAmount); // local application is not a commit
+    await act(async () => { await result.current.increment(); });
     expect(result.current.error).toBeNull();
+    expect(result.current.count).toBe(4);
+    expect(waitForCommit.mock.calls.filter(([id]) => id === "funding:0xsender")).toHaveLength(2);
+    expect(consume.mock.calls.filter(([options]) => options.accountId === "0xsender")).toHaveLength(1);
+    expect(mockFunding).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses an available P2ID fee note before requesting more tokens", async () => {
+    chain.baseFee = 7;
+    balances.set(COUNTER_ADDRESS, 100000000n);
+    getConsumableNotes.mockResolvedValueOnce([
+      record("unrelated-asset", "0xother"),
+      record("custom-script", "0xfee", "custom"),
+      record(fundingNoteId("0xsender"), "0xfee"),
+    ]);
+    const { result } = await setup();
+    await act(async () => { await result.current.increment(); });
+    expect(result.current.error).toBeNull();
+    expect(mockFunding).not.toHaveBeenCalled();
+    expect(consume).toHaveBeenCalledWith({ accountId: "0xsender", notes: [fundingNoteId("0xsender")] });
+    expect(consume).toHaveBeenCalledTimes(2); // funding + increment
+  });
+
+  it("receives an issued note even when the faucet HTTP response fails", async () => {
+    chain.baseFee = 7;
+    balances.set(COUNTER_ADDRESS, 100000000n);
+    mockFunding.mockImplementationOnce(async () => {
+      getConsumableNotes.mockResolvedValueOnce([record(fundingNoteId("0xsender"), "0xfee")]);
+      throw new Error("Faucet response timed out");
+    });
+    const { result } = await setup();
+    await act(async () => { await result.current.increment(); });
+    expect(result.current.error).toBeNull();
+    expect(result.current.count).toBe(4);
+    expect(mockFunding).toHaveBeenCalledOnce();
+    expect(settings.has("counter:funding:0xsender")).toBe(false);
+  });
+
+  it("finds a late funding note after remount without requesting it again", async () => {
+    chain.baseFee = 7;
+    balances.set(COUNTER_ADDRESS, 100000000n);
+    mockFunding.mockRejectedValueOnce(new Error("Faucet response timed out"));
+    const first = await setup();
+    await act(async () => { await first.result.current.increment(); });
+    expect(first.result.current.error).toContain("timed out");
+    first.unmount();
+    getConsumableNotes.mockResolvedValueOnce([record(fundingNoteId("0xsender"), "0xfee")]);
+    const second = await setup();
+    await act(async () => { await second.result.current.increment(); });
+    expect(second.result.current.error).toBeNull();
+    expect(second.result.current.count).toBe(4);
+    expect(mockFunding).toHaveBeenCalledOnce();
   });
 });
