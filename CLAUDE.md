@@ -239,17 +239,33 @@ For non-developer users building with this template:
 
 ## Miden Skills
 
-The eight bundled skills mirror [agent-tools PR #17](https://github.com/0xMiden/agent-tools/pull/17) at commit `8186d487f19f1181facbb31ca6ee54ed251b5c94`. Use them for SDK APIs; the tutorial-specific configuration and increment flow above take precedence over generic examples.
+Use these skills for SDK APIs; the tutorial-specific configuration and increment flow above take precedence over generic examples.
 
-For Miden-specific guidance, Claude will auto-load these skills when relevant:
+For Miden-specific guidance, Claude auto-loads these skills when relevant:
 - `react-sdk-patterns` — Complete React SDK hook API reference
 - `web-client-usage` — Standalone client resources and low-level API boundaries
 - `testing-patterns` — Test mock factory, fixtures, and TDD conventions
 - `frontend-pitfalls` — All frontend/WASM/browser pitfalls with safe/unsafe examples
-- `miden-concepts` — Miden architecture from a developer perspective
 - `vite-wasm-setup` — Vite + WASM configuration, deployment headers, troubleshooting
 - `signer-integration` — External signer setup (Para, Turnkey, MidenFi)
+- `chain-anchored-execution` — Multisig proposals and offline co-signing; read before using `captureAnchor`
+- `wallet-adapter-integration` — Connecting through the MidenFi wallet adapter, its lifecycle and error taxonomy
 - `frontend-source-guide` — Source lookup for advanced frontend work
+- `miden-concepts` — Miden architecture from a developer perspective
+
+**All but `miden-concepts` are installed, not committed.** They ship inside the
+`@miden-sdk/*` packages and land in `.claude/skills/` during `yarn install`, via
+the `prepare` script. That means they always match the SDK version in
+`package.json`: bump the SDK and the guidance follows, instead of sitting at
+whatever was committed months earlier.
+
+Nothing to do by hand: `yarn install` populates them. To refresh explicitly, run
+`yarn miden-skills sync`. If `.claude/skills/` looks empty, you have not
+installed dependencies yet.
+
+`miden-concepts` is still committed here, because it describes the protocol
+rather than the SDK and so is not published to npm. It stays canonical in
+[`0xMiden/agent-tools`](https://github.com/0xMiden/agent-tools).
 
 ## General Frontend Skills (Recommended)
 
