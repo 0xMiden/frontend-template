@@ -1,4 +1,4 @@
-// Public NoAuth + BasicWallet counter on testnet, compatible with v0.16.
+// Public NoAuth + BasicWallet counter on testnet, compatible with v0.17.
 // Set a deployed account ID (hex or bech32); unset or empty leaves it unconfigured.
 export const COUNTER_ADDRESS: string | null =
   import.meta.env.VITE_MIDEN_COUNTER_ADDRESS || null;
@@ -19,7 +19,7 @@ export const NETWORK_POLL_INTERVAL_MS = 2_500;
 // network block cycles with margin.
 export const NETWORK_POLL_TIMEOUT_MS = 60_000;
 
-// Compiled v0.16 increment-note package, fetched at runtime for the counter.
+// Compiled v0.17 increment-note package, fetched at runtime for the counter.
 export const INCREMENT_NOTE_PACKAGE_URL = "/packages/increment-note.masp";
 
 // Application display name (used by wallet adapter)

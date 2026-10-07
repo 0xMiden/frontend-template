@@ -7,19 +7,16 @@ afterEach(() => vi.unstubAllGlobals());
 const noteId = `0x${"ab".repeat(32)}`;
 
 describe("requestFaucetTokens", () => {
-  it("validates the fee asset and sends a public note request with valid PoW", async () => {
+  it("requests faucet funding with valid PoW when metadata names a distribution account", async () => {
     vi.stubGlobal("crypto", webcrypto);
     const target = 1n << 64n;
     const get = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: "fee-asset", base_amount: 100000000 }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: "distribution-account", base_amount: 100000000 }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ challenge: "aabb", target: String(target) }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ note_id: noteId }) });
     vi.stubGlobal("fetch", get);
-    const validate = vi.fn();
-    await expect(requestFaucetTokens("https://faucet.example/", "sender", validate)).resolves.toBe(noteId);
-    expect(validate).toHaveBeenCalledWith("fee-asset");
+    await expect(requestFaucetTokens("https://faucet.example/", "sender")).resolves.toBe(noteId);
     const request = new URL(get.mock.calls[2][0]);
-    expect(request.searchParams.get("is_private_note")).toBe("false");
     expect(request.searchParams.get("asset_amount")).toBe("100000000");
     expect(request.searchParams.get("account_id")).toBe("sender");
     const nonce = Buffer.alloc(8);
@@ -29,12 +26,10 @@ describe("requestFaucetTokens", () => {
     expect(get.mock.calls[2][1]).toMatchObject({ cache: "no-store" });
   });
 
-  it("does not request tokens from a faucet for another asset", async () => {
-    const get = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: "wrong-asset" }) });
+  it("does not request tokens when the faucet returns an invalid amount", async () => {
+    const get = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: "distributor", base_amount: -1 }) });
     vi.stubGlobal("fetch", get);
-    await expect(requestFaucetTokens("https://faucet.example", "sender", () => {
-      throw new Error("Wrong fee asset");
-    })).rejects.toThrow("Wrong fee asset");
+    await expect(requestFaucetTokens("https://faucet.example", "sender")).rejects.toThrow("invalid token amount");
     expect(get).toHaveBeenCalledTimes(1);
   });
 
@@ -45,7 +40,7 @@ describe("requestFaucetTokens", () => {
       .mockResolvedValueOnce({ ok: true, json: async () => ({ challenge: "ab", target: String(1n << 64n) }) })
       .mockResolvedValueOnce({ ok: false, status: 500, text: async () => "Internal error." });
     vi.stubGlobal("fetch", get);
-    await expect(requestFaucetTokens("https://faucet.example", "sender", () => {})).rejects.toThrow("Faucet get_tokens: HTTP 500 Internal error.");
+    await expect(requestFaucetTokens("https://faucet.example", "sender")).rejects.toThrow("Faucet get_tokens: HTTP 500 Internal error.");
     expect(get).toHaveBeenCalledTimes(3);
   });
 
@@ -56,6 +51,6 @@ describe("requestFaucetTokens", () => {
       .mockResolvedValueOnce({ ok: true, json: async () => ({ challenge: "ab", target: String(1n << 64n) }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ note_id: "invalid-id" }) });
     vi.stubGlobal("fetch", get);
-    await expect(requestFaucetTokens("https://faucet.example", "sender", () => {})).rejects.toThrow(/note ID/);
+    await expect(requestFaucetTokens("https://faucet.example", "sender")).rejects.toThrow(/note ID/);
   });
 });

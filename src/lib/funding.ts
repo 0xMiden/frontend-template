@@ -1,5 +1,5 @@
 import type { useMiden, useMidenClient, useConsume, useWaitForCommit } from "@miden-sdk/react";
-import { Endpoint, RpcClient, NoteScript } from "@miden-sdk/miden-sdk";
+import { Endpoint, RpcClient, NoteScript, type Note } from "@miden-sdk/miden-sdk";
 import { parseAccountId } from "./miden";
 import { MIDEN_FAUCET_URL, MIDEN_RPC_URL, NETWORK_POLL_INTERVAL_MS, NETWORK_POLL_TIMEOUT_MS } from "@/config";
 
@@ -18,7 +18,7 @@ export async function fundAccounts(
   accounts: { id: string; label: string }[],
   { client, runExclusive, consume, waitForCommit, onStatus }: FundingOptions,
 ): Promise<void> {
-  // Mutations own their locks; rc.7's waitForCommit and direct client calls do not.
+  // Mutations own their locks; waitForCommit and direct client calls do not.
   const committed = (txId: string) => runExclusive(() => waitForCommit(txId, pollOptions));
   const readSetting = (key: string) => runExclusive(async () => {
     const bytes = await client.getSetting(key) as number[] | undefined;
@@ -26,19 +26,34 @@ export async function fundAccounts(
   });
   const writeSetting = (key: string, value: string) => runExclusive(() =>
     client.setSetting(key, Array.from(new TextEncoder().encode(value))));
+  // v0.17 stores the fee asset in the protocol configuration received during sync.
+  const { feeAsset, blockNum } = await runExclusive(async () => {
+    const summary = await client.syncState();
+    for (const { id, label } of accounts) {
+      const account = await client.getAccount(parseAccountId(id));
+      if (!account) throw new Error(`Cannot fund missing account: ${id}`);
+      // Admission gates only creation; existing on-chain accounts need no registration.
+      if (account.isNew() && !await client.isAccountAllowed(parseAccountId(id))) {
+        throw new Error(`The ${label} account (${id}) requires registration on this network before it can submit transactions.`);
+      }
+    }
+    return { feeAsset: (await client.feeFaucetId()).toString(), blockNum: summary.blockNum() };
+  });
   const endpoint = MIDEN_RPC_URL === "testnet" ? Endpoint.testnet()
     : MIDEN_RPC_URL === "devnet" ? Endpoint.devnet()
     : MIDEN_RPC_URL === "localhost" ? Endpoint.localhost() : new Endpoint(MIDEN_RPC_URL);
   const rpc = new RpcClient(endpoint);
-  let feeAsset: string;
   let reserve: bigint;
   try {
-    const header = await rpc.getBlockHeaderByNumber();
-    feeAsset = header.feeFaucetId().toString();
+    const header = await rpc.getBlockHeaderByNumber(blockNum);
     reserve = BigInt(header.verificationBaseFee()) * 256n; // Demo reserve for several transactions.
   } finally { rpc.free(); }
 
   if (reserve === 0n) return;
+  const isFeeFundingNote = (note: Note) =>
+    note.script().root().toHex() === NoteScript.p2id().root().toHex() &&
+    note.assets().fungibleAssets().some((asset) =>
+      asset.faucetId().toString() === feeAsset && asset.amount() > 0n);
   for (const { id, label } of accounts) {
     const balance = () => runExclusive(async () => {
       await client.syncState();
@@ -53,10 +68,8 @@ export async function fundAccounts(
     const findFunding = () => runExclusive(async () => {
       await client.syncState();
       const notes = await client.getConsumableNotes(parseAccountId(id));
-      const p2id = NoteScript.p2id().root().toHex();
-      return notes.map((record) => record.inputNoteRecord().toNote()).find((note) =>
-        note.script().root().toHex() === p2id && note.assets().fungibleAssets().some((asset) =>
-          asset.faucetId().toString() === feeAsset && asset.amount() > 0n))?.id().toString();
+      return notes.map((record) => record.inputNoteRecord().toNote())
+        .find(isFeeFundingNote)?.id().toString();
     });
     if (!fundingNote) {
       // A previous HTTP request may have minted a note without returning its ID.
@@ -65,11 +78,7 @@ export async function fundAccounts(
         if (!MIDEN_FAUCET_URL) throw new Error("Configure VITE_MIDEN_FAUCET_URL to fund transaction fees.");
         onStatus(`Requesting ${label} funding...`);
         try {
-          fundingNote = await requestFaucetTokens(MIDEN_FAUCET_URL, id, (faucetId) => {
-            if (parseAccountId(faucetId).toString() !== feeAsset) {
-              throw new Error("Configured faucet does not mint this network's fee asset.");
-            }
-          });
+          fundingNote = await requestFaucetTokens(MIDEN_FAUCET_URL, id);
         } catch (err) {
           fundingNote = await findFunding();
           if (!fundingNote) throw err;
@@ -88,6 +97,10 @@ export async function fundAccounts(
       if (record?.isConsumed()) { received = true; break; }
       let txId = record?.consumerTransactionId();
       if (!txId && record?.inclusionProof() && !record.isProcessing()) {
+        if (!isFeeFundingNote(record.toNote())) {
+          await runExclusive(() => client.removeSetting(key));
+          throw new Error("Configured faucet did not return a P2ID note containing this network's fee asset.");
+        }
         txId = (await consume({ accountId: id, notes: [fundingNote] })).transactionId;
       }
       if (txId) {
@@ -111,7 +124,6 @@ export async function fundAccounts(
 export async function requestFaucetTokens(
   baseUrl: string,
   accountId: string,
-  validateFaucet: (id: string) => void,
 ): Promise<string> {
   const get = async (path: string, params?: URLSearchParams) => {
     const response = await fetch(`${baseUrl.replace(/\/$/, "")}/${path}${params ? `?${params}` : ""}`, {
@@ -122,7 +134,8 @@ export async function requestFaucetTokens(
     return response.json();
   };
   const metadata = await get("get_metadata");
-  validateFaucet(metadata.id);
+  // metadata.id is the distribution account, not the fee-asset issuer in v0.17.
+  // fundAccounts validates the actual note's script and assets before consuming it.
   const amount = String(metadata.base_amount);
   if (!/^\d+$/.test(amount) || BigInt(amount) <= 0n) {
     throw new Error("Faucet returned an invalid token amount.");
@@ -147,7 +160,6 @@ export async function requestFaucetTokens(
   }
   const result = await get("get_tokens", new URLSearchParams({
     account_id: accountId,
-    is_private_note: "false",
     asset_amount: amount,
     challenge: pow.challenge,
     nonce: String(nonce),

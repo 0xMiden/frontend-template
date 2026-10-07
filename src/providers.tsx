@@ -4,10 +4,10 @@ import { MidenFiSignerProvider } from "@miden-sdk/miden-wallet-adapter-react";
 import { WalletAdapterNetwork } from "@miden-sdk/miden-wallet-adapter-base";
 import { APP_NAME, MIDEN_RPC_URL, MIDEN_PROVER } from "@/config";
 
-// v0.16 provider order — MidenProvider runs OUTSIDE the signer provider.
+// MidenProvider runs OUTSIDE the signer provider.
 //
 // When a signer provider (MidenFiSignerProvider) is an *ancestor* of MidenProvider,
-// v0.16 MidenProvider treats it as its external keystore and intentionally does NOT
+// v0.17 MidenProvider treats it as its external keystore and intentionally does NOT
 // create the WebClient until that signer connects (it sees `signerContext.isConnected
 // === false` and returns early). With a wallet that hasn't connected — e.g. before the
 // user connects, or in any environment without the MidenFi extension — the app would
@@ -27,21 +27,10 @@ import { APP_NAME, MIDEN_RPC_URL, MIDEN_PROVER } from "@/config";
 // WalletContext + SignerContext; no MultiSignerProvider required).
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
-    // `useWorker: false` runs the whole WebClient on one thread.
-    //
-    // With the default worker shim the client keeps TWO in-memory SMT "forests"
-    // (one in the main thread, one in the worker) over the same IndexedDB, and
-    // `importAccountById` only registers the MAIN-thread forest while
-    // `submitNewTransaction`/`apply_transaction` runs in the WORKER. Incrementing
-    // the counter means applying a *delta* transaction to an existing (nonce>0)
-    // account we imported rather than created, and that apply path looks the
-    // account up in the executing instance's forest — which, under the worker,
-    // never contains our late-imported counter, so it fails with
-    // "account data wasn't found for account id …". One thread → one forest, so
-    // the imported counter is present when the consume is applied. We offload the
-    // heavy proving to the remote testnet prover (see useIncrementCounter), so the
-    // single thread only pays local execution, not proof generation. (Verified
-    // against web-sdk `crates/idxdb-store/src/transaction/mod.rs` apply path.)
+    // Keep imported counter state and transaction application in one client.
+    // This single-threaded setup was introduced for the v0.16 worker's separate
+    // in-memory SMT forests and is retained for this demo. Remote proving keeps
+    // proof generation off the main thread (see useIncrementCounter).
     <MidenProvider
       config={{ rpcUrl: MIDEN_RPC_URL, prover: MIDEN_PROVER, useWorker: false }}
       loadingComponent={<div className="loading">Loading Miden WASM...</div>}

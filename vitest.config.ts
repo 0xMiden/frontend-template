@@ -7,6 +7,11 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // The base adapter has only a `module` entry; Vitest's SSR resolver needs
+      // an explicit entry even when tests replace the module with vi.mock.
+      "@miden-sdk/miden-wallet-adapter-base": path.resolve(
+        __dirname, "node_modules/@miden-sdk/miden-wallet-adapter-base/dist/index.js",
+      ),
     },
   },
   test: {
