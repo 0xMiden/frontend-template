@@ -140,6 +140,6 @@ All funding logic lives in `src/lib/funding.ts`, behind `fundAccounts`, ready to
 
 ## AI Developer Experience
 
-SDK skills are installed from the pinned npm packages into `.claude/skills/` by `yarn install` (`miden-skills sync`). They are not committed. To refresh them, run `yarn miden-skills sync`. See `CLAUDE.md` for this template's configuration and increment flow; it takes precedence over generic examples in the packaged skills.
+SDK skills are installed from the pinned npm packages into `.claude/skills/` by `yarn install` (`miden-skills sync`). They are not committed. To refresh them, run `yarn miden-skills sync`. See [AGENTS.md](./AGENTS.md) for this template's configuration and increment flow; it takes precedence over generic examples in the packaged skills.
 
 The committed `miden-concepts` skill is synced from [agent-tools PR #18](https://github.com/0xMiden/agent-tools/pull/18), commit [`4c0951c`](https://github.com/0xMiden/agent-tools/tree/4c0951c12a02fb1bcfa7a60f166949e2c10b622e), with its account-upgrade reference linked to the upstream skill.
