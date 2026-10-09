@@ -46,7 +46,7 @@ const pollOptions = {
 const sleep = () => new Promise((resolve) => setTimeout(resolve, pollOptions.intervalMs));
 
 /**
- * v0.16 counter increment.
+ * v0.17 counter increment.
  *
  * The counter is a public, `NoAuth` account, so anyone can execute a transaction
  * against it. Incrementing is a two-transaction flow (mirroring the

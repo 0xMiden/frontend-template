@@ -10,7 +10,7 @@ const mockFetch = vi.fn(async (url: string) => {
   if (url.startsWith("https://faucet-api.")) {
     const { pathname, searchParams } = new URL(url);
     const json = async () => {
-      if (pathname === "/get_metadata") return { id: "0xfee", base_amount: 100000000 };
+      if (pathname === "/get_metadata") return { id: "0xdistributor", base_amount: 100000000 };
       if (pathname === "/pow") return { challenge: "ab", target: String(1n << 64n) };
       return { note_id: await mockFunding(searchParams.get("account_id")) };
     };
@@ -67,7 +67,7 @@ vi.mock("@miden-sdk/miden-sdk", async () => {
   }
   exports.RpcClient = class {
     free() {}
-    async getBlockHeaderByNumber() { return { feeFaucetId: () => ({ toString: () => "0xfee" }), verificationBaseFee: () => chain.baseFee }; }
+    async getBlockHeaderByNumber() { return { verificationBaseFee: () => chain.baseFee }; }
   };
   exports.AccountId = { fromHex: (id: string) => ({ toString: () => id }), fromBech32: (id: string) => ({ toString: () => id }) };
   exports.NoteScript = { fromPackage: () => stub(), p2id: () => ({ root: () => ({ toHex: () => "p2id" }) }) };
@@ -96,6 +96,7 @@ const account = (id = "0xsender") => ({
   storage: () => ({ getMapItem: () => ({ toU64s: () => [BigInt(holder.n), 0n, 0n, 0n] }) }),
   vault: () => ({ getBalance: () => balances.get(id) ?? chain.balance }),
   id: () => ({ toString: () => id }),
+  isNew: () => id === "0xsender",
 });
 const record = (id: string, faucetId?: string, script = "p2id") => ({
   inputNoteRecord: () => ({ toNote: () => ({
@@ -109,7 +110,8 @@ const record = (id: string, faucetId?: string, script = "p2id") => ({
 const getAccount = vi.fn(async (id: { toString(): string }) => account(id.toString()));
 const getConsumableNotes = vi.fn(async () => [record("STUB_NOTE_ID")]);
 const inputRecord = () => ({ inclusionProof: () => ({}), isConsumed: () => false,
-  isProcessing: () => false, consumerTransactionId: (): string | undefined => undefined });
+  isProcessing: () => false, consumerTransactionId: (): string | undefined => undefined,
+  toNote: () => record(fundingNoteId("0xsender"), "0xfee").inputNoteRecord().toNote() });
 const fundingRecords = new Map<string, ReturnType<typeof inputRecord>>();
 const getInputNote = vi.fn(async (id: string) => fundingRecords.get(id) ?? inputRecord());
 const createWallet = vi.fn(async () => exclusive(async () => account()));
@@ -130,7 +132,9 @@ const client = {
   getConsumableNotes,
   getInputNote,
   importAccountById: vi.fn(async () => undefined),
-  syncState: vi.fn(async () => undefined),
+  syncState: vi.fn(async () => ({ blockNum: () => 123 })),
+  feeFaucetId: vi.fn(async () => ({ toString: (): string => "0xfee" })),
+  isAccountAllowed: vi.fn(async () => true),
   getSetting: vi.fn(async (key: string) => settings.get(key)),
   setSetting: vi.fn(async (key: string, value: number[]) => { settings.set(key, value); }),
   removeSetting: vi.fn(async (key: string) => { settings.delete(key); }),
@@ -157,6 +161,7 @@ describe("useIncrementCounter", () => {
     holder.n = 3;
     chain.baseFee = 0;
     chain.balance = 0n;
+    client.isAccountAllowed.mockResolvedValue(true);
     getAccount.mockImplementation(async (id) => account(id.toString()));
     getConsumableNotes.mockResolvedValue([record("STUB_NOTE_ID")]);
     getInputNote.mockImplementation(async (id) => fundingRecords.get(id) ?? inputRecord());
@@ -274,6 +279,27 @@ describe("useIncrementCounter", () => {
     expect(result.current.isSubmitting).toBe(false);
   });
 
+  it("stops before funding or proving if the new sender needs registration", async () => {
+    chain.baseFee = 7;
+    client.isAccountAllowed.mockResolvedValue(false);
+    const { result } = await setup();
+    await act(async () => { await result.current.increment(); });
+    expect(result.current.error).toMatch(/sender.*0xsender.*registration/i);
+    expect(mockFunding).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+    expect(consume).not.toHaveBeenCalled();
+    expect(result.current.isSubmitting).toBe(false);
+  });
+
+  it("does not require registration for accounts already on chain", async () => {
+    client.isAccountAllowed.mockResolvedValue(false);
+    getAccount.mockImplementation(async (id) => ({ ...account(id.toString()), isNew: () => false }));
+    const { result } = await setup();
+    await act(async () => { await result.current.increment(); });
+    expect(result.current.error).toBeNull();
+    expect(result.current.count).toBe(4);
+  });
+
   it("stops if consuming the funding note leaves less than the fee reserve", async () => {
     chain.baseFee = 7;
     fundingAmount = 10n;
@@ -283,6 +309,22 @@ describe("useIncrementCounter", () => {
     expect(execute).not.toHaveBeenCalled();
     expect(mockFunding).toHaveBeenCalledOnce();
     expect(settings.has("counter:funding:0xsender")).toBe(false);
+  });
+
+  it.each([
+    { faucet: "0xother", script: "p2id" },
+    { faucet: "0xfee", script: "tx_fee" },
+  ])("rejects faucet funding with issuer $faucet and script $script", async ({ faucet, script }) => {
+    chain.baseFee = 7;
+    getInputNote.mockResolvedValue({ ...inputRecord(),
+      toNote: () => record(fundingNoteId("0xsender"), faucet, script).inputNoteRecord().toNote() });
+    const { result } = await setup();
+    await act(async () => { await result.current.increment(); });
+    expect(mockFunding).toHaveBeenCalledOnce();
+    expect(result.current.error).toMatch(/P2ID.*fee asset/i);
+    expect(settings.has("counter:funding:0xsender")).toBe(false);
+    expect(consume).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
   });
 
   it("uses the SDK's funding consumption ID before trusting an optimistic balance", async () => {

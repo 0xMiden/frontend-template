@@ -1,6 +1,6 @@
 # Miden Frontend Template
 
-Minimal Vite + React + TypeScript template for building Miden frontends. It ships a Miden testnet counter demo that reads a shared on-chain counter and **increments it end-to-end from the browser** — the in-browser WebClient publishes an increment note and consumes it against the public `NoAuth` counter, no wallet required. Built on SDK v0.16.0-rc.7; configure a compatible counter deployment (see [Counter Demo](#counter-demo)).
+Minimal Vite + React + TypeScript template for building Miden frontends. It ships a Miden testnet counter demo that reads a shared on-chain counter and **increments it end-to-end from the browser** — the in-browser WebClient publishes an increment note and consumes it against the public `NoAuth` counter, no wallet required. Built on core SDK v0.17.1 and React SDK v0.17.0; configure a compatible counter deployment (see [Counter Demo](#counter-demo)).
 
 ## Getting Started
 
@@ -9,7 +9,7 @@ yarn install
 yarn dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173). Set `VITE_MIDEN_COUNTER_ADDRESS` in `.env.local` to a compatible v0.16 counter and restart Vite. The app defaults to Miden testnet, renders the counter value, and lets you increment it on-chain by clicking the counter button — no wallet required (the button drives the full publish + consume flow via the in-browser client). Optionally install the [MidenFi wallet extension](https://chromewebstore.google.com/detail/midenfi) and connect to explore the wallet adapter, though the counter demo does not use it. See [Counter Demo](#counter-demo).
+Open [http://localhost:5173](http://localhost:5173). Set `VITE_MIDEN_COUNTER_ADDRESS` in `.env.local` to a compatible v0.17 counter and restart Vite. The app defaults to Miden testnet, renders the counter value, and lets you increment it on-chain by clicking the counter button — no wallet required (the button drives the full publish + consume flow via the in-browser client). Optionally install the [MidenFi wallet extension](https://chromewebstore.google.com/detail/midenfi) and connect to explore the wallet adapter, though the counter demo does not use it. See [Counter Demo](#counter-demo).
 
 ## Project Structure
 
@@ -29,22 +29,22 @@ src/
     └── miden.ts                    # Shared Miden utilities
 
 public/packages/
-├── counter-account.masp            # Compiled v0.16 counter contract
-└── increment-note.masp             # Compiled v0.16 increment note script
+├── counter-account.masp            # Compiled v0.17 counter contract
+└── increment-note.masp             # Compiled v0.17 increment note script
 ```
 
 ## Counter Demo
 
 The template demonstrates incrementing a shared on-chain counter on Miden testnet, entirely from the browser via the local WebClient (no wallet required):
 
-1. A **counter account** — a **public, `NoAuth` + `BasicWallet`** account built from `counter-account.masp` — must be deployed on the selected v0.16 network. The old v0.15 testnet deployment is incompatible; no default v0.16 address is bundled yet.
+1. A **counter account** — a **public, `NoAuth` + `BasicWallet`** account built from `counter-account.masp` — must be deployed on the selected v0.17 network. Earlier deployments are incompatible; configure your own v0.17 counter address.
 2. On button click the in-browser WebClient restores or creates a local sender, **publishes** a plain increment note (built from `increment-note.masp`, tag `0`, no attachment) as the sender's own output note, then **consumes** it as the counter (NoAuth ⇒ no signature). Both transactions use the configured remote prover and the local client — no wallet involved.
-3. Before publishing, `fundAccounts` ensures sender and counter have a fee reserve (256 base-fee units). It reuses available P2ID fee notes or requests them from the public faucet, consumes them and checks the confirmed balance. `BasicWallet` lets the counter receive these notes; NoAuth accounts still pay fees. This shared demo account must only hold test tokens.
+3. Before publishing, `fundAccounts` syncs the client, reads `client.feeFaucetId()` from the protocol configuration, and checks whether new accounts need registration. It ensures sender and counter have a fee reserve (256 base-fee units), reusing available P2ID fee notes or requesting them from the public faucet. The faucet metadata identifies its distribution account, so the helper validates the delivered note's P2ID script and fee asset before consuming it and checking the confirmed balance. `BasicWallet` lets the counter receive these notes; NoAuth accounts still pay fees. This shared demo account must only hold test tokens.
 4. The frontend waits for each transaction with `useWaitForCommit`, then re-reads the counter's `StorageMap`. A timeout does not cancel a submission; recovery of a whole increment across retries or reloads is outside this template's scope.
 
-> **v0.16 status:** the SDK flow has been exercised in a browser against a simulated chain, including funding timeouts. Live verification against a compatible fee-enabled deployment is still required. The client retains `useWorker: false` and remote proving; see Implementation Notes below.
+> **v0.17 verification:** on October 7, 2026, an isolated browser funded a new sender through the public testnet faucet, published and consumed the bundled increment note with remote proving, and confirmed the deployed counter changed from 1 to 2. Unit tests also cover funding retries, timeouts, account registration and invalid funding notes. The client retains `useWorker: false`; see Implementation Notes below.
 
-The `.masp` packages in `public/packages/` (`counter-account.masp`, `increment-note.masp`) have been updated for v0.16. See "Pointing at your own counter" below to rebuild/redeploy against your own counter.
+The `.masp` packages in `public/packages/` use package format `7.0.0`. They were rebuilt with the v0.17 toolchain from [project-template PR #67](https://github.com/0xMiden/project-template/pull/67), commit [`6ae2ef0`](https://github.com/0xMiden/project-template/tree/6ae2ef043052cd8bb04578a3e10c1405569aa4b9), and deserialized with the installed SDK. See "Pointing at your own counter" below to rebuild/redeploy against your own counter.
 
 ### Pointing at your own counter
 
@@ -52,7 +52,7 @@ The counter address is resolved at runtime via the `VITE_MIDEN_COUNTER_ADDRESS` 
 
 | `VITE_MIDEN_COUNTER_ADDRESS` value | Effect |
 |---|---|
-| unset / commented out (default) | Unconfigured — set a compatible v0.16 deployment. |
+| unset / commented out (default) | Unconfigured — set a compatible v0.17 deployment. |
 | empty string (`VITE_MIDEN_COUNTER_ADDRESS=`) | Unconfigured — `<Counter>` renders the "address not configured" card and makes no network calls. |
 | any account id — hex (`0x…`) or bech32 (`mtst1…`) | Uses your own deployment (resolved via `AccountId.fromHex` / `fromBech32`). |
 
@@ -60,28 +60,29 @@ The slot-name constant is fixed in `src/config.ts` and must match the counter co
 
 To redeploy (e.g. after modifying contract sources):
 
-> **v0.16 note:** rebuild both contracts with a matching v0.16 toolchain. Deploy the counter with current `NoAuth` and `BasicWallet` components; keep contract sources and build tooling in the contract project.
+> **v0.17 toolchain:** use project-template's `miden-toolchain.toml` (midenup channel `0.17.0`, guest `miden` SDK `0.15.0`, compiler `0.11.0`). Rebuild both contracts and deploy the counter with current `NoAuth` and `BasicWallet` components; keep contract sources and build tooling in the contract project.
 
 1. In the [project-template](https://github.com/0xMiden/project-template) repo (on the branch matching your SDK version), follow its build and deployment instructions to obtain a compatible public counter address.
 2. Copy the freshly built artifacts into this template:
    ```bash
-   cp contracts/counter-account/target/miden/release/counter_account.masp \
+   cp contracts/counter-account/target/miden/release/out.masp \
       <frontend-template>/public/packages/counter-account.masp
-   cp contracts/increment-note/target/miden/release/increment_note.masp \
+   cp contracts/increment-note/target/miden/release/out.masp \
       <frontend-template>/public/packages/increment-note.masp
    ```
 3. Set `VITE_MIDEN_COUNTER_ADDRESS=<your bech32 address>` in `.env` (or your shell environment) — no source edit required.
-4. Verify the files exist with `.claude/hooks/check-artifacts.sh` (it checks the `.masp` files are present and non-trivial in size; note it does **not** validate the MASP/MAST format version, so it will not catch a v0.15 ↔ v0.16 version mismatch).
+4. Verify the files exist with `.claude/hooks/check-artifacts.sh` (it checks the `.masp` files are present and non-trivial in size; note it does **not** validate the MASP/MAST format version, so it will not catch a v0.16 ↔ v0.17 version mismatch).
 
 ## Key Dependencies
 
 | Package | Version pin | Purpose |
 |---------|-------------|---------|
-| `@miden-sdk/react` | `0.16.0-rc.7` | React hooks for Miden (useAccount, useSyncState, useMiden, useMidenClient, useTransaction, …) |
-| `@miden-sdk/miden-sdk` | `0.16.0-rc.7` | Core SDK types (Note, NoteScript, AccountId, Word, Felt, …) |
-| `@miden-sdk/vite-plugin` | `0.16.0-rc.7` | Vite plugin that handles WASM loading, top-level await, and COOP/COEP |
-| `@miden-sdk/miden-wallet-adapter-react` | `0.16.0-rc.7` | MidenFi wallet adapter React context + hooks |
-| `@miden-sdk/miden-wallet-adapter-base` | `0.16.0-rc.7` | Wallet adapter types and network configuration |
+| `@miden-sdk/react` | `0.17.0` | React hooks for Miden (useAccount, useSyncState, useMiden, useMidenClient, useTransaction, …) |
+| `@miden-sdk/miden-sdk` | `0.17.1` | Core SDK types (Note, NoteScript, AccountId, Word, Felt, …) |
+| `@miden-sdk/vite-plugin` | `0.17.0` | Vite plugin that handles WASM loading, top-level await, and COOP/COEP |
+| `@miden-sdk/miden-wallet-adapter-react` | `0.17.0` | MidenFi wallet adapter React context + hooks |
+| `@miden-sdk/miden-wallet-adapter-base` | `0.17.0` | Wallet adapter types and network configuration |
+| `@miden-sdk/create` | `0.17.0` | Syncs SDK guidance into `.claude/skills/` on install |
 
 ## Configuration
 
@@ -93,7 +94,18 @@ VITE_MIDEN_PROVER=testnet    # "devnet" | "testnet" | "local" | custom URL
 VITE_MIDEN_FAUCET_URL=https://faucet-api.testnet.miden.io
 ```
 
-Custom RPCs require a faucet that mints that network's fee asset. After a chain reset, use a fresh browser origin/profile; old IndexedDB state is incompatible. The app does not automatically erase wallets or keys.
+Use stable v0.17 RPC, prover and note transport services together; a v0.16 or v0.17 release-candidate endpoint is incompatible. Custom RPCs require a faucet that distributes that network's fee asset. For private-note applications, also set the matching `noteTransportUrl` in `MidenProvider`'s config (`src/providers.tsx`).
+
+On networks enforcing account registration, the helper reports the new account ID before requesting funding or proving. Obtain an invitation and register that account using `client.registerAccount(accountId, invitationCode)` under `runExclusive` after syncing, then retry. Existing on-chain accounts do not need registration.
+
+### Upgrading an existing browser profile
+
+Follow [docs PR #375](https://github.com/0xMiden/docs/pull/375) before opening the upgraded app against existing data:
+
+- Consume v0.16 private notes before upgrading; v0.16 account/note exports cannot be imported into v0.17.
+- Back up browser-keystore secret keys on the v0.16 SDK first. Opening the stable v0.17 SDK resets the old IndexedDB store **including its local secret keys**. This comes from the SDK even though the template contains no database-deletion code.
+- A v0.17 release-candidate store is not reset automatically and is incompatible with stable v0.17. Back up its keys before recreating it.
+- For this disposable demo, a fresh browser origin/profile avoids old stores and chain-reset state. Rebuild both packages and configure a compatible counter; old account IDs and compiled packages do not carry over.
 
 ## Verification
 
@@ -106,7 +118,7 @@ npx vite build            # production build (emits dist/)
 npx eslint .              # lint
 ```
 
-The PostToolUse hook runs typecheck + affected tests after every edit. The Stop hook runs the full suite when a task completes.
+The configured Claude PostToolUse hooks run typecheck, affected tests, and the full test/build suite after Edit/Write operations.
 
 Browser-level verification (render correctness, no console errors, wallet popup, E2E increment) can be done with either:
 - **Playwright MCP** for headless render / console checks
@@ -114,15 +126,11 @@ Browser-level verification (render correctness, no console errors, wallet popup,
 
 ## Implementation Notes
 
-The v0.16 flow retains two implementation requirements from the previous integration; both are explained below and in `src/providers.tsx`.
+### Client execution and signing
 
-### `useWorker: false` — single SMT forest so the imported counter can be applied
+`MidenProvider` stays outside `MidenFiSignerProvider`, so its local keystore initializes immediately and the counter works without a connected wallet. Putting the signer outside it gates client initialization on wallet connection.
 
-The counter is an **existing** on-chain account this client *imports* (rather than creates), so consuming a note against it applies a *delta* transaction. Under the default worker shim the client keeps two in-memory SMT "forests" — one in the main thread, one in the worker — over the same IndexedDB. `importAccountById` registers only the main-thread forest, but `submitNewTransaction`/`apply_transaction` runs in the worker, whose forest never contains the late-imported counter — so the consume fails with `apply transaction result: storage error: account data wasn't found for account id …`. Running with `useWorker: false` (set on `MidenProvider` in `src/providers.tsx`) collapses this to one thread → one forest, so the imported counter is present when the consume is applied. (Verified against `web-sdk crates/idxdb-store/src/transaction/mod.rs`.)
-
-### Remote proving — keep the single thread off proof generation
-
-Because there is no worker, `useIncrementCounter.ts::increment` uses `useTransaction` and `useConsume` with the provider's remote prover configuration. Remote proving keeps proof generation off the main thread. SDK mutation hooks own their locks; direct client calls and `useWaitForCommit` are serialized with `runExclusive` in rc.7.
+The template retains `useWorker: false`, introduced in v0.16 to keep imported-account state and transaction application in the same client instance. Remote proving keeps proof generation off the main thread. SDK mutation hooks own their locks; direct client calls and `useWaitForCommit` are serialized with `runExclusive`. The React SDK still requires the explicit numeric Falcon option (`authScheme: 2`) in `useCreateWallet`.
 
 ### Transaction confirmation and funding
 
@@ -132,6 +140,6 @@ All funding logic lives in `src/lib/funding.ts`, behind `fundAccounts`, ready to
 
 ## AI Developer Experience
 
-This template ships with `.claude/` skills for AI coding tools. Skills cover React SDK patterns, frontend pitfalls, Vite + WASM setup, signer integration, testing patterns, and Miden architecture. See `CLAUDE.md` for the full developer guide.
+SDK skills are installed from the pinned npm packages into `.claude/skills/` by `yarn install` (`miden-skills sync`). They are not committed. To refresh them, run `yarn miden-skills sync`. See [AGENTS.md](./AGENTS.md) for this template's configuration and increment flow; it takes precedence over generic examples in the packaged skills.
 
-The eight bundled skills are synced from [agent-tools PR #17](https://github.com/0xMiden/agent-tools/pull/17) at commit [`8186d487`](https://github.com/0xMiden/agent-tools/tree/8186d487f19f1181facbb31ca6ee54ed251b5c94/skills). They provide shared SDK guidance; `CLAUDE.md` documents this tutorial's configuration and increment flow.
+The committed `miden-concepts` skill is synced from [agent-tools PR #18](https://github.com/0xMiden/agent-tools/pull/18), commit [`4c0951c`](https://github.com/0xMiden/agent-tools/tree/4c0951c12a02fb1bcfa7a60f166949e2c10b622e), with its account-upgrade reference linked to the upstream skill.
