@@ -5,6 +5,14 @@ import { midenVitePlugin } from "@miden-sdk/vite-plugin";
 
 export default defineConfig({
   plugins: [react(), midenVitePlugin({ crossOriginIsolation: true })],
+  build: {
+    rollupOptions: {
+      input: {
+        counter: path.resolve(__dirname, "index.html"),
+        miniApp: path.resolve(__dirname, "mini-app.html"),
+      },
+    },
+  },
   resolve: {
     dedupe: ["react", "react-dom", "react/jsx-runtime"],
     alias: {
