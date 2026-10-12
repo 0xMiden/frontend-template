@@ -6,6 +6,8 @@ React 19 + TypeScript + Vite frontend for the Miden blockchain.
 
 - `src/` — React application source
 - `src/components/` — UI components (Counter, AppContent)
+- `src/mini-app/` — Independent wallet-managed starter at `/mini-app.html`; see `docs/mini-app-starter.md`
+- `e2e/` — Production-browser mini-app checks with controlled injected providers (`yarn test:browser`)
 - `src/hooks/` — Custom hooks (useIncrementCounter)
 - `src/lib/` — Shared utilities
 - `src/__tests__/` — Test infrastructure (mocks, fixtures, patterns)
@@ -31,6 +33,8 @@ npx tsc -b --noEmit
 ```
 
 ## SDK Choice: React SDK Hooks First
+
+The mini-app entry deliberately uses `WalletProvider` + `useWallet`, with Bread owning send execution. Do not mount the counter's `AppProviders` or create an app-owned client for it. Adapter WASM types still load for address validation and output-note decoding. Its journal must be saved before dispatch; preserve unresolved requests and serialize tabs with Web Locks. Tests simulate wallet injection and do not establish native-client or live-chain acceptance. Keep the counter's workflow separate.
 
 ALWAYS prefer `@miden-sdk/react` hooks over low-level `WasmWebClient` methods.
 Only use the WASM client directly via `useMidenClient()` for operations not covered by hooks.

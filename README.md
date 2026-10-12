@@ -4,6 +4,8 @@ Minimal Vite + React + TypeScript template for building Miden frontends. It ship
 
 ## Getting Started
 
+For a wallet-managed mini-app, use the [runnable Bread starter](docs/mini-app-starter.md) at `http://localhost:5173/mini-app.html`. It uses the wallet to send a public Testnet note and preserves unresolved requests across reloads. It needs no counter deployment or local client setup. The instructions below start the app-owned counter.
+
 ```bash
 yarn install
 yarn dev
