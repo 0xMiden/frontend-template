@@ -292,3 +292,27 @@ For complex applications beyond basic hook usage (custom signers, direct WasmWeb
 3. Claude uses sub-agents to explore repos efficiently without filling main context
 
 The basic skills cover ~80% of patterns. Source repos provide the remaining 20% for advanced builders.
+
+<!-- BEGIN:miden-agent-rules -->
+## Miden
+
+This project uses the Miden web SDK. Your training data is likely out of date:
+Miden is pre-1.0 and its API changes between minor versions.
+
+Before writing or reviewing Miden code, read the version-matched guide that
+ships inside the package you are touching:
+
+- `node_modules/@miden-sdk/miden-sdk/AGENTS.md`
+- `node_modules/@miden-sdk/miden-wallet-adapter-base/AGENTS.md`
+- `node_modules/@miden-sdk/react/AGENTS.md`
+- `node_modules/@miden-sdk/vite-plugin/AGENTS.md`
+
+Task-specific skills are synced into `.claude/skills/` on install, and also
+ship in each package's `skills/` directory. Read the relevant skill before
+implementing, not after.
+
+These files ship in the published tarball, so they describe the exact version
+you have installed. The version is in the same directory's `package.json`; if a
+guide disagrees with what you expected, the guide is right and your assumption
+is stale.
+<!-- END:miden-agent-rules -->
