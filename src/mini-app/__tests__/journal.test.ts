@@ -60,6 +60,9 @@ describe("mini-app request journal", () => {
     '{"version":2}',
     JSON.stringify({ ...intent, phase: "reported" }),
     JSON.stringify({ ...intent, phase: "accepted" }),
+    JSON.stringify({ ...intent, requestId: { unexpected: "object" } }),
+    JSON.stringify({ ...intent, phase: "accepted", requestId: "id", txHash: { unexpected: "object" } }),
+    JSON.stringify({ ...intent, txHash: 42 }),
     JSON.stringify({ ...intent, amount: "9007199254740992" }),
   ])("blocks malformed or incompatible stored data: %s", (raw) => {
     localStorage.setItem(JOURNAL_KEY, raw);

@@ -281,6 +281,17 @@ test("connection refusal is visible without an authorized send", async ({
   expect(await page.evaluate(() => window.miniAppProbe.sends)).toBe(0);
 });
 
+test("corrupt journal fields block dispatch without crashing or discarding the record", async ({ context, page }) => {
+  const record = JSON.stringify({ version: 1, network: "testnet", phase: "submitting", sender, recipient: sender, faucetId, amount: "10", requestId: { invalid: "object" } });
+  await context.addInitScript(({ key, record }) => localStorage.setItem(key, record), { key: journalKey, record });
+  await injectWallet(context);
+  await connect(page);
+  await expect(page.getByText(/Stored request journal is invalid/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Request public send" })).toBeDisabled();
+  expect(await page.evaluate(key => localStorage.getItem(key), journalKey)).toBe(record);
+  expect(await page.evaluate(() => window.miniAppProbe.sends)).toBe(0);
+});
+
 test("mobile viewport stays readable and within the screen", async ({
   page,
 }) => {

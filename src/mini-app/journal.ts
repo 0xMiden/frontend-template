@@ -60,6 +60,8 @@ export function readJournal(storage: JournalStorage): SendJournal | null {
       typeof j.faucetId !== "string" ||
       typeof j.amount !== "string" ||
       !["submitting", "accepted", "reported"].includes(j.phase ?? "") ||
+      (j.requestId !== undefined && (typeof j.requestId !== "string" || !j.requestId)) ||
+      (j.txHash !== undefined && (typeof j.txHash !== "string" || !j.txHash)) ||
       (j.phase !== "submitting" &&
         (typeof j.requestId !== "string" || !j.requestId)) ||
       (j.phase === "reported" && (typeof j.txHash !== "string" || !j.txHash))
