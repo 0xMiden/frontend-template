@@ -1,0 +1,81 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #27251f;
+  background: #faf8f2;
+}
+body {
+  margin: 0;
+}
+.mini-app {
+  box-sizing: border-box;
+  max-width: 44rem;
+  margin: auto;
+  padding: 2rem 1rem calc(2rem + env(safe-area-inset-bottom));
+  line-height: 1.5;
+}
+.mini-app h1 {
+  font-size: clamp(2rem, 6vw, 3rem);
+  line-height: 1.1;
+  margin-top: 0.5rem;
+}
+.mini-app h2 {
+  font-size: 1.25rem;
+}
+.mini-app .eyebrow {
+  color: #914012;
+  font-weight: 650;
+}
+.mini-app section {
+  border-top: 1px solid #ddd5c4;
+  padding: 1rem 0;
+}
+.mini-app fieldset {
+  border: 1px solid #ddd5c4;
+  padding: 1rem;
+  border-radius: 0.5rem;
+}
+.mini-app label {
+  display: block;
+  margin: 1rem 0;
+  font-weight: 600;
+}
+.mini-app input {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  padding: 0.75rem;
+  margin-top: 0.4rem;
+  font: inherit;
+  border: 1px solid #857e71;
+  border-radius: 0.3rem;
+  background: white;
+}
+.mini-app button {
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.7rem 1rem;
+  margin: 0.35rem 0.5rem 0.35rem 0;
+  background: #b44d15;
+  color: white;
+  border: 1px solid transparent;
+  border-radius: 0.3rem;
+}
+.mini-app button:disabled {
+  background: #e9e3d8;
+  color: #686257;
+  cursor: not-allowed;
+}
+.mini-app :focus-visible {
+  outline: 3px solid #914012;
+  outline-offset: 3px;
+}
+.mini-app code {
+  overflow-wrap: anywhere;
+}
+.mini-app [role="alert"] {
+  color: #9d2721;
+}
+.mini-app a {
+  color: #914012;
+}
